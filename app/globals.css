@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --nav-h: 64px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  /* Velvet night: ink with a violet undertone, a single candle overhead. */
+  background:
+    radial-gradient(900px 480px at 50% -12%, rgba(226, 182, 91, 0.07) 0%, transparent 60%),
+    radial-gradient(1400px 800px at 50% 0%, #16141d 0%, #0f0e14 45%, #0b0a0e 100%);
+  background-color: #0b0a0e;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Parquet — barely-there vertical grain, like a dance floor in low light. */
+.parquet {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(239, 236, 230, 0.012) 0px,
+    rgba(239, 236, 230, 0.012) 1px,
+    transparent 1px,
+    transparent 72px
+  );
+}
+
+/* All numerals: lining + tabular. Even baseline, equal widths, always. */
+.tabular {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.01em;
+}
+
+/* Mono eyebrow — the quiet label above every idea. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #6b6672;
+}
+
+/* Flat raised panel — 1px border does the work, no glassy blur. */
+.panel {
+  background: rgba(239, 236, 230, 0.02);
+  border: 1px solid rgba(239, 236, 230, 0.08);
+  border-radius: 10px;
+}
+.panel-strong {
+  background: #16141d;
+  border: 1px solid rgba(239, 236, 230, 0.12);
+  border-radius: 10px;
+}
+
+/* Buttons shrink on hover. Never grow. */
+.btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-radius: 6px;
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+.btn:active {
+  transform: scale(0.94);
+}
+.btn-primary {
+  background: #efece6;
+  color: #0b0a0e;
+}
+.btn-primary:hover {
+  transform: scale(0.97);
+  background: #e2b65b;
+}
+.btn-ghost {
+  background: transparent;
+  color: #a29da8;
+  border: 1px solid rgba(239, 236, 230, 0.14);
+}
+.btn-ghost:hover {
+  transform: scale(0.97);
+  color: #e2b65b;
+  border-color: rgba(226, 182, 91, 0.35);
+}
+
+/* The gold range slider. */
+input[type="range"].dial {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2px;
+  background: rgba(239, 236, 230, 0.14);
+  border-radius: 999px;
+  outline: none;
+}
+input[type="range"].dial::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e2b65b;
+  border: 5px solid #0b0a0e;
+  box-shadow: 0 0 0 1px rgba(226, 182, 91, 0.5), 0 0 18px rgba(226, 182, 91, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+input[type="range"].dial::-webkit-slider-thumb:hover {
+  transform: scale(0.94);
+}
+input[type="range"].dial::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e2b65b;
+  border: 5px solid #0b0a0e;
+  box-shadow: 0 0 0 1px rgba(226, 182, 91, 0.5), 0 0 18px rgba(226, 182, 91, 0.25);
+  cursor: pointer;
+}
+
+/* Hairline flourish under the wordmark. */
+.rule-gold {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(226, 182, 91, 0.55), transparent);
+}
