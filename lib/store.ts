@@ -1,12 +1,11 @@
 /**
- * Tiny localStorage-backed player store for the MVP.
- * M4 swaps this for a real backend so leagues sync across devices.
+ * localStorage-backed player identity + local (solo) score.
+ * League play is server-authoritative (lib/league-server.ts); this only holds
+ * who you are and your solo tally.
  */
 
-import { Bot, DEFAULT_BOTS } from "./game";
-
 export type Player = {
-  address: string; // Solana address (stubbed in MVP)
+  address: string; // Solana wallet address (or a throwaway for guest play)
   name: string;
   points: number;
   streak: number;
@@ -16,18 +15,17 @@ export type Player = {
 
 export type Persisted = {
   player: Player | null;
-  bots: Bot[];
+  /** Display name of the table you sit at. */
   league: string;
-  /** Invite code of the real league this player sits at (null = house table). */
+  /** Invite code of the real league (null = solo play). */
   leagueCode: string | null;
 };
 
-const KEY = "ballroom.v2"; // v2: honest house-player names/league labels
+const KEY = "ballroom.v3"; // v3: bots removed, server-authoritative leagues
 
 const DEFAULT: Persisted = {
   player: null,
-  bots: DEFAULT_BOTS.map((b) => ({ ...b })),
-  league: "House Table",
+  league: "Solo",
   leagueCode: null,
 };
 
@@ -36,10 +34,7 @@ export function load(): Persisted {
   try {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return DEFAULT;
-    const parsed = JSON.parse(raw) as Persisted;
-    // Merge in default bots if missing
-    if (!parsed.bots?.length) parsed.bots = DEFAULT.bots.map((b) => ({ ...b }));
-    return parsed;
+    return JSON.parse(raw) as Persisted;
   } catch {
     return DEFAULT;
   }
@@ -82,7 +77,7 @@ export function setLeague(code: string, name: string): Persisted {
   return state;
 }
 
-/** Placeholder for a real Solana address until wallet-adapter lands (M3). */
+/** Throwaway address for the no-wallet guest path. */
 export function fakeAddress(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789";
   let s = "";

@@ -15,6 +15,8 @@ export default function ShareCard({
   actual,
   points,
   streak,
+  rank,
+  field,
   playerName,
   receiptId,
   onPlayAgain,
@@ -25,6 +27,10 @@ export default function ShareCard({
   actual: number;
   points: number;
   streak: number;
+  /** finishing place among the humans this round (league mode) */
+  rank?: number;
+  /** how many players were in the round */
+  field?: number;
   playerName: string;
   receiptId?: string | null;
   onPlayAgain: () => void;
@@ -79,6 +85,12 @@ export default function ShareCard({
             <Field label="Off by" value={String(err)} />
           </div>
 
+          {rank && field && field > 1 && (
+            <p className="mb-4 font-display text-lg italic text-ivory">
+              {rank === 1 ? "Closest at the table" : `${ordinal(rank)} of ${field} at the table`}
+            </p>
+          )}
+
           <div className="flex items-end justify-between">
             <div>
               <p className="text-sm text-ivory-dim">{playerName}</p>
@@ -113,6 +125,12 @@ export default function ShareCard({
       </div>
     </div>
   );
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
 }
 
 function Field({

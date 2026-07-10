@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot } from "@/lib/game";
 import { fetchLeague, type League } from "@/lib/league";
 
 export type Row = {
@@ -10,26 +9,25 @@ export type Row = {
   points: number;
   streak?: number;
   you?: boolean;
-  house?: boolean;
 };
 
 /**
- * The table. With a real league code it polls the shared league and shows the
- * humans; house players only fill in while fewer than two humans are seated.
- * Without a code it's the local house table.
+ * The table. With a real league code it polls the shared league and ranks the
+ * humans seated there. Solo, it just shows you — no synthetic players.
  */
 export default function Leaderboard({
   player,
-  bots,
   leagueCode,
   leagueName,
   highlightDelta,
+  refreshKey,
 }: {
-  player: { address?: string; name: string; points: number };
-  bots: Bot[];
+  player: { address?: string; name: string; points: number; streak?: number };
   leagueCode?: string | null;
   leagueName?: string;
   highlightDelta?: number;
+  /** bump to force an immediate re-poll (e.g. right after a round resolves) */
+  refreshKey?: number;
 }) {
   const [league, setLeague] = useState<League | null>(null);
 
@@ -41,42 +39,38 @@ export default function Leaderboard({
         if (alive && l) setLeague(l);
       });
     tick();
-    const iv = setInterval(tick, 5000);
+    const iv = setInterval(tick, 4000);
     return () => {
       alive = false;
       clearInterval(iv);
     };
-  }, [leagueCode]);
+  }, [leagueCode, refreshKey]);
 
   let rows: Row[];
   let title: string;
   let subtitle: string;
 
-  if (league) {
-    const members = Object.entries(league.members).map(([addr, m]) => ({
+  if (leagueCode && league) {
+    rows = Object.entries(league.members).map(([addr, m]) => ({
       id: addr,
       name: m.name,
       points: m.points,
       streak: m.streak,
       you: addr === player.address,
     }));
-    const humans = members.length;
-    rows = [...members];
-    // Bench the house once the table has real company.
-    if (humans < 2) {
-      rows.push(
-        ...bots.map((b) => ({ id: b.id, name: b.name, points: b.points, house: true })),
-      );
-    }
     title = league.name;
-    subtitle = humans < 2 ? "WAITING FOR YOUR PEOPLE — HOUSE FILLS IN" : `${humans} SEATED`;
-  } else {
+    const n = rows.length;
+    subtitle = `${n} SEATED`;
+  } else if (leagueCode) {
     rows = [
       { id: "you", name: player.name, points: player.points, you: true },
-      ...bots.map((b) => ({ id: b.id, name: b.name, points: b.points, house: true })),
     ];
     title = leagueName ?? "The table";
-    subtitle = "YOU VS THE HOUSE";
+    subtitle = "SYNCING…";
+  } else {
+    rows = [{ id: "you", name: player.name, points: player.points, you: true }];
+    title = "Solo";
+    subtitle = "JUST YOU";
   }
 
   rows.sort((a, b) => b.points - a.points);
@@ -109,11 +103,11 @@ export default function Leaderboard({
                 {r.name}
                 {r.you ? " — you" : ""}
               </span>
-              {r.house && (
-                <span className="font-mono text-[9px] tracking-[0.14em] text-ivory-faint">
-                  HOUSE
+              {r.streak && r.streak > 1 ? (
+                <span className="font-mono text-[9px] tracking-[0.1em] text-ivory-faint">
+                  {r.streak}★
                 </span>
-              )}
+              ) : null}
             </span>
             <span className="tabular flex items-baseline gap-2 font-num text-sm text-ivory">
               {r.you && highlightDelta ? (

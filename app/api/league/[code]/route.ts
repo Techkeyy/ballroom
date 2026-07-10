@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLeague, joinLeague, reportRound } from "@/lib/league-server";
+import { getLeague, joinLeague } from "@/lib/league-server";
 
 export const dynamic = "force-dynamic";
 
@@ -35,34 +35,6 @@ export async function POST(
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "join error" },
-      { status: 500 },
-    );
-  }
-}
-
-/** Report a resolved round. Body: { address, gained, beatCrowd } */
-export async function PUT(
-  req: Request,
-  { params }: { params: { code: string } },
-) {
-  try {
-    const { address, gained, beatCrowd } = (await req.json()) as {
-      address?: string;
-      gained?: number;
-      beatCrowd?: boolean;
-    };
-    if (!address || typeof gained !== "number") {
-      return NextResponse.json(
-        { error: "address and gained required" },
-        { status: 400 },
-      );
-    }
-    const league = await reportRound(params.code, address, gained, Boolean(beatCrowd));
-    if (!league) return NextResponse.json({ error: "not a member" }, { status: 404 });
-    return NextResponse.json({ league });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "report error" },
       { status: 500 },
     );
   }

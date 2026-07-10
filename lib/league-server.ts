@@ -12,6 +12,9 @@
  *   }
  */
 
+import { PREDICT_WINDOW_MS, scoreGuess, median } from "./game";
+import { fetchMatchPoint } from "./txline-server";
+
 export type LeagueMember = {
   name: string;
   points: number;
@@ -28,6 +31,37 @@ export type League = {
   members: Record<string, LeagueMember>;
 };
 
+/**
+ * A synchronized round: one shared clock per (league, match). Every seated
+ * player calls the SAME question with the SAME deadline; the server reads the
+ * live TxLINE market at open (startProb) and at resolve (actual), scores all
+ * guesses at once, and ranks the humans. Server-authoritative — clients can't
+ * fake the market or the timing.
+ */
+export type RoundGuess = { name: string; guess: number; at: number };
+export type RoundResult = { name: string; guess: number; points: number; rank: number };
+
+export type LeagueRound = {
+  id: string;
+  matchId: string;
+  home: string;
+  away: string;
+  homeCode: string;
+  startProb: number;
+  openedAt: number;
+  deadline: number;
+  resolved: boolean;
+  actual: number | null;
+  minute: number;
+  scoreHome: number;
+  scoreAway: number;
+  guesses: Record<string, RoundGuess>;
+  results: Record<string, RoundResult> | null;
+  // oracle identity of the market read at resolve (for verified receipts)
+  marketMessageId?: string;
+  marketTs?: number;
+};
+
 const KV_URL = process.env.KV_REST_API_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 const HAS_KV = Boolean(KV_URL && KV_TOKEN);
@@ -36,8 +70,12 @@ const HAS_KV = Boolean(KV_URL && KV_TOKEN);
 
 // Dev fallback lives on globalThis — Next bundles each route separately, so a
 // plain module-level Map would give every route its own (empty) copy.
-const g = globalThis as unknown as { __ballroomLeagues?: Map<string, League> };
+const g = globalThis as unknown as {
+  __ballroomLeagues?: Map<string, League>;
+  __ballroomRounds?: Map<string, LeagueRound>;
+};
 const localStore = (g.__ballroomLeagues ??= new Map<string, League>());
+const roundStore = (g.__ballroomRounds ??= new Map<string, LeagueRound>());
 
 async function kvGet(code: string): Promise<League | null> {
   const { kv } = await import("@vercel/kv");
@@ -59,6 +97,23 @@ export async function getLeague(code: string): Promise<League | null> {
 async function putLeague(league: League): Promise<void> {
   if (HAS_KV) return kvSet(league);
   localStore.set(league.code, league);
+}
+
+async function getRoundRaw(key: string): Promise<LeagueRound | null> {
+  if (HAS_KV) {
+    const { kv } = await import("@vercel/kv");
+    return (await kv.get<LeagueRound>(`round:${key}`)) ?? null;
+  }
+  return roundStore.get(key) ?? null;
+}
+
+async function putRound(key: string, round: LeagueRound): Promise<void> {
+  if (HAS_KV) {
+    const { kv } = await import("@vercel/kv");
+    await kv.set(`round:${key}`, round, { ex: 24 * 60 * 60 });
+  } else {
+    roundStore.set(key, round);
+  }
 }
 
 export const storageMode = HAS_KV ? "kv" : "memory";
@@ -125,29 +180,161 @@ export async function joinLeague(
   return league;
 }
 
+// ---- synchronized rounds ----------------------------------------------------
+
+const REVEAL_MS = 9_000; // how long a resolved round lingers before a new one opens
+
+function roundKey(code: string, matchId: string): string {
+  return `${code.toUpperCase()}:${matchId}`;
+}
+
+type MarketPoint = Awaited<ReturnType<typeof fetchMatchPoint>>;
+
+// Last good market read per fixture, so a transient null (odds momentarily
+// unavailable / a slow call) doesn't block opening or resolving a round.
+const gm = globalThis as unknown as {
+  __ballroomMarket?: Map<string, { p: NonNullable<MarketPoint>; at: number }>;
+};
+const marketCache = (gm.__ballroomMarket ??= new Map());
+
+/** Read the live market for a fixture (server-authoritative source of truth),
+ * with one retry and a short-lived fallback to the last good read. */
+async function readMarket(matchId: string): Promise<MarketPoint> {
+  for (let i = 0; i < 3; i++) {
+    const p = await fetchMatchPoint(matchId).catch(() => null);
+    if (p) {
+      marketCache.set(matchId, { p, at: Date.now() });
+      return p;
+    }
+    if (i < 2) await new Promise((r) => setTimeout(r, 400));
+  }
+  const cached = marketCache.get(matchId);
+  if (cached && Date.now() - cached.at < 120_000) return cached.p;
+  return null;
+}
+
 /**
- * Record a resolved round for a member (client-reported for the MVP — a
- * server-authoritative resolve is the hardening step, noted in ROADMAP).
+ * Resolve a round exactly once: read the live market, score every guess,
+ * rank the humans, fold results into member totals + streaks.
  */
-export async function reportRound(
-  code: string,
-  address: string,
-  gained: number,
-  beatCrowd: boolean,
-): Promise<League | null> {
+async function resolveRound(code: string, round: LeagueRound): Promise<LeagueRound> {
+  if (round.resolved) return round;
+
+  const market = await readMarket(round.matchId);
+  const actual = market ? market.p : round.startProb; // degrade to flat if unread
+  round.actual = actual;
+  if (market) {
+    round.minute = market.minute;
+    round.scoreHome = market.scoreHome;
+    round.scoreAway = market.scoreAway;
+    round.marketMessageId = market.messageId;
+    round.marketTs = market.ts;
+  }
+
+  const entries = Object.entries(round.guesses);
+  const scored = entries.map(([addr, gg]) => ({
+    addr,
+    name: gg.name,
+    guess: gg.guess,
+    points: scoreGuess(gg.guess, actual),
+  }));
+  const med = median(scored.map((s) => s.points));
+
+  // rank: highest points first
+  const ranked = [...scored].sort((a, b) => b.points - a.points);
+  const results: Record<string, RoundResult> = {};
+  ranked.forEach((s, i) => {
+    results[s.addr] = { name: s.name, guess: s.guess, points: s.points, rank: i + 1 };
+  });
+  round.results = results;
+  round.resolved = true;
+
+  // fold into league totals
   const league = await getLeague(code);
-  if (!league) return null;
-  const m = league.members[address];
-  if (!m) return null;
+  if (league) {
+    for (const s of scored) {
+      const m = league.members[s.addr];
+      if (!m) continue;
+      const kept = s.points >= med; // held or beat the table this round
+      m.points += s.points;
+      m.rounds += 1;
+      m.streak = kept ? m.streak + 1 : 0;
+      m.bestStreak = Math.max(m.bestStreak, m.streak);
+      m.lastSeen = Date.now();
+    }
+    await putLeague(league);
+  }
 
-  // clamp to the scoring function's actual range
-  const pts = Math.max(0, Math.min(100, Math.round(gained)));
-  m.points += pts;
-  m.rounds += 1;
-  m.streak = beatCrowd ? m.streak + 1 : 0;
-  m.bestStreak = Math.max(m.bestStreak, m.streak);
-  m.lastSeen = Date.now();
+  return round;
+}
 
-  await putLeague(league);
-  return league;
+/**
+ * The current round for (league, match). Lazily resolves a round whose clock
+ * has run out (resolution happens on read — no cron needed), and opens a fresh
+ * round once the last one has been revealed for a beat.
+ */
+export async function getOrOpenRound(
+  code: string,
+  matchId: string,
+  meta: { home: string; away: string; homeCode: string },
+  opts: { open?: boolean } = {},
+): Promise<LeagueRound | null> {
+  const key = roundKey(code, matchId);
+  const now = Date.now();
+  let round = await getRoundRaw(key);
+
+  if (round && !round.resolved && now >= round.deadline) {
+    round = await resolveRound(code, round);
+    await putRound(key, round);
+    return round;
+  }
+  if (round && !round.resolved) return round; // live, accepting guesses
+  if (round && round.resolved && now - round.deadline < REVEAL_MS && !opts.open) {
+    return round; // still revealing results
+  }
+
+  // open a fresh round — needs a live market read for startProb
+  const market = await readMarket(matchId);
+  if (!market) return round ?? null; // can't open without the market
+  const fresh: LeagueRound = {
+    id: `${matchId}-${now}`,
+    matchId,
+    home: meta.home,
+    away: meta.away,
+    homeCode: meta.homeCode,
+    startProb: market.p,
+    openedAt: now,
+    deadline: now + PREDICT_WINDOW_MS,
+    resolved: false,
+    actual: null,
+    minute: market.minute,
+    scoreHome: market.scoreHome,
+    scoreAway: market.scoreAway,
+    guesses: {},
+    results: null,
+  };
+  await putRound(key, fresh);
+  return fresh;
+}
+
+/** Lock a member's guess into the current live round (before the deadline). */
+export async function lockRoundGuess(
+  code: string,
+  matchId: string,
+  roundId: string,
+  address: string,
+  name: string,
+  guess: number,
+): Promise<LeagueRound | null> {
+  const key = roundKey(code, matchId);
+  const round = await getRoundRaw(key);
+  if (!round || round.id !== roundId) return round ?? null;
+  if (round.resolved || Date.now() >= round.deadline) return round; // too late
+  round.guesses[address] = {
+    name: name.slice(0, 24),
+    guess: Math.max(2, Math.min(98, Math.round(guess * 10) / 10)),
+    at: Date.now(),
+  };
+  await putRound(key, round);
+  return round;
 }

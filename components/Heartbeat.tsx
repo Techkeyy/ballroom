@@ -14,10 +14,13 @@ const PAD = 10;
 export default function Heartbeat({
   history,
   guess,
+  others = [],
   windowMax = 60,
 }: {
   history: OddsPoint[];
   guess: number | null;
+  /** other players' locked calls, revealed at resolve */
+  others?: number[];
   windowMax?: number;
 }) {
   const pts = history.slice(-windowMax);
@@ -83,6 +86,22 @@ export default function Heartbeat({
         strokeLinejoin="round"
         strokeLinecap="round"
       />
+
+      {/* other players' calls, revealed on resolve */}
+      {others.map((o, i) => (
+        <g key={i}>
+          <circle cx={W - PAD - 2} cy={y(o)} r="2.5" fill="#efece6" opacity="0.5" />
+          <line
+            x1={W - PAD - 22}
+            y1={y(o)}
+            x2={W - PAD}
+            y2={y(o)}
+            stroke="#efece6"
+            strokeWidth="0.75"
+            opacity="0.25"
+          />
+        </g>
+      ))}
 
       {guessY != null && (
         <g>

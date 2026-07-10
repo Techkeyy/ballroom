@@ -2,8 +2,8 @@
  * Client-side league API — thin fetch wrappers over app/api/league/*.
  */
 
-import type { League } from "./league-server";
-export type { League, LeagueMember } from "./league-server";
+import type { League, LeagueRound } from "./league-server";
+export type { League, LeagueMember, LeagueRound, RoundResult } from "./league-server";
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -49,19 +49,62 @@ export async function fetchLeague(code: string): Promise<League | null> {
   }
 }
 
-export async function reportRoundToLeague(
+type MatchMeta = { home: string; away: string; homeCode: string };
+
+/** Open (or fetch) the current synchronized round for a match. */
+export async function openRound(
   code: string,
-  address: string,
-  gained: number,
-  beatCrowd: boolean,
-): Promise<void> {
+  matchId: string,
+  meta: MatchMeta,
+): Promise<LeagueRound | null> {
   try {
-    await req(`/api/league/${code}`, {
-      method: "PUT",
-      body: JSON.stringify({ address, gained, beatCrowd }),
-    });
+    const { round } = await req<{ round: LeagueRound | null }>(
+      `/api/league/${code}/round`,
+      { method: "POST", body: JSON.stringify({ matchId, ...meta, open: true }) },
+    );
+    return round;
   } catch {
-    /* best-effort — local score still updates */
+    return null;
+  }
+}
+
+/** Poll the current round (lazily resolves when the clock runs out). */
+export async function fetchRound(
+  code: string,
+  matchId: string,
+  meta: MatchMeta,
+): Promise<LeagueRound | null> {
+  const q = new URLSearchParams({ matchId, ...meta }).toString();
+  try {
+    const { round } = await req<{ round: LeagueRound | null }>(
+      `/api/league/${code}/round?${q}`,
+    );
+    return round;
+  } catch {
+    return null;
+  }
+}
+
+/** Lock this player's guess into the live round. */
+export async function lockGuess(
+  code: string,
+  matchId: string,
+  roundId: string,
+  address: string,
+  name: string,
+  guess: number,
+): Promise<LeagueRound | null> {
+  try {
+    const { round } = await req<{ round: LeagueRound | null }>(
+      `/api/league/${code}/round`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ matchId, roundId, address, name, guess }),
+      },
+    );
+    return round;
+  } catch {
+    return null;
   }
 }
 

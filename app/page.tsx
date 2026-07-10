@@ -9,7 +9,7 @@ import { createLeague, leagueLink } from "@/lib/league";
 export default function Home() {
   const router = useRouter();
   const [player, setPlayer] = useState<Player | null>(null);
-  const [league, setLeague] = useState("House Table");
+  const [league, setLeague] = useState("Solo");
   const [leagueCode, setLeagueCode] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -69,7 +69,9 @@ export default function Home() {
         {player ? (
           <div className="space-y-6">
             <div className="text-center">
-              <p className="eyebrow mb-2 !text-gold">At the table</p>
+              <p className="eyebrow mb-2 !text-gold">
+                {leagueCode ? "At the table" : "Signed in"}
+              </p>
               <p className="font-display text-3xl font-medium text-ivory">
                 {player.name}
               </p>
