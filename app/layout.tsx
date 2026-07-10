@@ -30,6 +30,9 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://ballroom-eight.vercel.app",
+  ),
   title: "Ball Room — read the market, not the match",
   description:
     "Race your friends to call where the live World Cup odds move next. Powered by TxLINE consensus odds, signed in with Solana. Free to play, skill only.",

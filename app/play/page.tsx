@@ -101,10 +101,10 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
 
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
-          <p className="truncate font-display text-[22px] font-medium leading-tight text-ivory">
+          <p className="truncate font-display text-[23px] font-semibold leading-tight text-ivory">
             {match.home}
           </p>
-          <p className="truncate font-display text-[22px] font-medium leading-tight text-ivory-faint">
+          <p className="truncate font-display text-[23px] font-semibold leading-tight text-ivory-dim">
             {match.away}
           </p>
         </div>
@@ -115,7 +115,7 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
             <span className="text-xl text-ivory-faint">%</span>
           </p>
           <p
-            className={`tabular mt-1 font-mono text-[10px] tracking-[0.12em] ${
+            className={`tabular mt-1 font-mono text-[11px] tracking-[0.08em] ${
               rising ? "text-ivory-dim" : "text-rose"
             }`}
           >

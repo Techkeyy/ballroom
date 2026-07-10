@@ -30,6 +30,10 @@ export type Match = {
   scoreAway: number;
   current: number; // current home win probability, 0..100
   history: OddsPoint[];
+  /** Identity of the TxLINE odds update behind `current` (live mode only) —
+   * lets a resolved round anchor to a Merkle-proven oracle message. */
+  marketMessageId?: string;
+  marketTs?: number;
 };
 
 const USE_MOCK =
@@ -200,6 +204,8 @@ function subscribeRealMatch(
         minute: number;
         scoreHome: number;
         scoreAway: number;
+        messageId?: string;
+        ts?: number;
       };
       const point: OddsPoint = { t: Date.now(), p: pt.p };
       history.push(point);
@@ -217,6 +223,8 @@ function subscribeRealMatch(
         scoreAway: pt.scoreAway,
         current: pt.p,
         history: [...history],
+        marketMessageId: pt.messageId,
+        marketTs: pt.ts,
       } as Match;
       meta = match;
       onPoint(point, match);

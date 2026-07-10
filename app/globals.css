@@ -40,13 +40,14 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Mono eyebrow — the quiet label above every idea. */
+/* Mono eyebrow — the quiet label above every idea.
+   11px + brighter grey: quiet, but never a squint. */
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.28em;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #6b6672;
+  color: #8d8797;
 }
 
 /* Flat raised panel — 1px border does the work, no glassy blur. */
@@ -64,8 +65,8 @@ body {
 /* Buttons shrink on hover. Never grow. */
 .btn {
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
+  font-size: 12px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   border-radius: 6px;
   transition:

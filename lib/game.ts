@@ -38,12 +38,17 @@ export type Bot = {
   points: number;
 };
 
+/**
+ * The house — clearly-labelled house players that keep the table alive before
+ * your real friends join (they're tagged HOUSE in the leaderboard, never passed
+ * off as humans). Real invite-link leagues replace them at M4.
+ */
 export const DEFAULT_BOTS: Bot[] = [
-  { id: "b1", name: "Tunde", skill: 0.8, points: 0 },
-  { id: "b2", name: "Marco", skill: 0.55, points: 0 },
-  { id: "b3", name: "Priya", skill: 0.68, points: 0 },
-  { id: "b4", name: "Dee", skill: 0.42, points: 0 },
-  { id: "b5", name: "Sam", skill: 0.73, points: 0 },
+  { id: "b1", name: "The Broker", skill: 0.8, points: 0 },
+  { id: "b2", name: "The Regular", skill: 0.55, points: 0 },
+  { id: "b3", name: "The Quant", skill: 0.68, points: 0 },
+  { id: "b4", name: "The Romantic", skill: 0.42, points: 0 },
+  { id: "b5", name: "The Closer", skill: 0.73, points: 0 },
 ];
 
 function gaussian(): number {

@@ -15,11 +15,11 @@ const config: Config = {
           800: "#16141d",
           700: "#1d1a26",
         },
-        // Warm ivory — never pure white.
+        // Warm ivory — never pure white. dim = readable body, faint = decoration only.
         ivory: {
           DEFAULT: "#efece6",
-          dim: "#a29da8",
-          faint: "#6b6672",
+          dim: "#b3aeba",
+          faint: "#7d7787",
         },
         // The one precious accent: champagne gold.
         gold: {

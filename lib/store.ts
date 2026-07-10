@@ -18,14 +18,17 @@ export type Persisted = {
   player: Player | null;
   bots: Bot[];
   league: string;
+  /** Invite code of the real league this player sits at (null = house table). */
+  leagueCode: string | null;
 };
 
-const KEY = "ballroom.v1";
+const KEY = "ballroom.v2"; // v2: honest house-player names/league labels
 
 const DEFAULT: Persisted = {
   player: null,
   bots: DEFAULT_BOTS.map((b) => ({ ...b })),
-  league: "The Lads",
+  league: "House Table",
+  leagueCode: null,
 };
 
 export function load(): Persisted {
@@ -68,6 +71,15 @@ export function signIn(name: string, address?: string): Persisted {
 export function signOut(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(KEY);
+}
+
+/** Seat this player at a real league table. */
+export function setLeague(code: string, name: string): Persisted {
+  const state = load();
+  state.leagueCode = code.toUpperCase();
+  state.league = name;
+  save(state);
+  return state;
 }
 
 /** Placeholder for a real Solana address until wallet-adapter lands (M3). */

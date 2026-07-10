@@ -5,6 +5,7 @@
  * M5 renders this same layout as an OG image for native unfurls.
  */
 
+import { useState } from "react";
 import { verdict } from "@/lib/game";
 
 export default function ShareCard({
@@ -15,6 +16,7 @@ export default function ShareCard({
   points,
   streak,
   playerName,
+  receiptId,
   onPlayAgain,
 }: {
   match: { home: string; away: string; homeCode: string; minute: number };
@@ -24,8 +26,10 @@ export default function ShareCard({
   points: number;
   streak: number;
   playerName: string;
+  receiptId?: string | null;
   onPlayAgain: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
   const v = verdict(points);
   const err = Math.round(Math.abs(guess - actual) * 10) / 10;
   const move = Math.round((actual - startProb) * 10) / 10;
@@ -90,11 +94,18 @@ export default function ShareCard({
       <div className="flex gap-3">
         <button
           onClick={() => {
-            navigator.clipboard?.writeText(brag);
+            // Link unfurls as the gold ticket (OG image); text is the fallback
+            // while the receipt is still being frozen.
+            const payload = receiptId
+              ? `${window.location.origin}/r/${receiptId}`
+              : brag;
+            navigator.clipboard?.writeText(payload);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1600);
           }}
           className="btn btn-ghost flex-1 py-3.5"
         >
-          Copy the receipt
+          {copied ? "Copied" : receiptId ? "Copy receipt link" : "Copy the receipt"}
         </button>
         <button onClick={onPlayAgain} className="btn btn-primary flex-1 py-3.5">
           Go again
@@ -122,7 +133,7 @@ function Field({
       >
         {value}
       </p>
-      <p className="eyebrow mt-2 !text-[9px]">{label}</p>
+      <p className="eyebrow mt-2 !text-[10px] !tracking-[0.14em]">{label}</p>
     </div>
   );
 }

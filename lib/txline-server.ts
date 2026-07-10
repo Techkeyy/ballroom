@@ -60,47 +60,9 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-// ---- on-chain activation (pre-token; uses only the guest JWT) --------------
-
-/** Ask TxLINE for a partially-signed purchase tx the user's wallet will sign. */
-export async function requestPurchaseQuote(
-  buyerPubkey: string,
-  txlineAmount: number,
-): Promise<{
-  baseUsdtCost: string;
-  feeUsdtAmount: string;
-  totalUsdtCharged: string;
-  transactionBase64: string;
-}> {
-  const res = await fetch(`${BASE}/guest/purchase/quote`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${await guestJwt()}`,
-    },
-    body: JSON.stringify({ buyerPubkey, txlineAmount }),
-  });
-  if (!res.ok) throw new Error(`purchase/quote -> ${res.status}`);
-  return res.json();
-}
-
-/** Exchange a confirmed on-chain subscription for a long-lived API token. */
-export async function activateToken(
-  txSig: string,
-  walletSignature: string,
-  leagues: number[],
-): Promise<{ token: string }> {
-  const res = await fetch(`${BASE}/token/activate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${await guestJwt()}`,
-    },
-    body: JSON.stringify({ txSig, walletSignature, leagues }),
-  });
-  if (!res.ok) throw new Error(`token/activate -> ${res.status}`);
-  return res.json();
-}
+// (On-chain activation lives client-side in lib/txline-activate.ts — the wallet
+// signature is bound to the guest JWT, so the server only proxies; see
+// app/api/txline/jwt and app/api/txline/activate.)
 
 // ---- documented response shapes (subset we use) ---------------------------
 
@@ -116,7 +78,9 @@ type FixtureSnapshot = {
 
 type OddsSnapshot = {
   FixtureId: number;
+  MessageId: string;
   Ts: number;
+  Bookmaker?: string;
   SuperOddsType: string; // market type, e.g. match result / 1X2
   InRunning: boolean;
   MarketPeriod: string; // e.g. full-time
@@ -160,7 +124,7 @@ const RESULT_MARKET = "1X2_PARTICIPANT_RESULT";
 
 function participantPcts(
   snapshots: OddsSnapshot[],
-): { part1: number; part2: number } | null {
+): { part1: number; part2: number; messageId: string; ts: number } | null {
   const candidates = snapshots.filter(
     (s) =>
       s.SuperOddsType === RESULT_MARKET &&
@@ -182,7 +146,33 @@ function participantPcts(
   return {
     part1: Math.round((nums[0] / sum) * 1000) / 10,
     part2: Math.round((nums[2] / sum) * 1000) / 10,
+    messageId: latest.MessageId,
+    ts: latest.Ts,
   };
+}
+
+// ---- validation proofs ------------------------------------------------------
+
+export type OddsProof = {
+  odds: OddsSnapshot;
+  summary: unknown;
+  subTreeProof: Array<{ hash: string; isRightSibling: boolean }>;
+  mainTreeProof: Array<{ hash: string; isRightSibling: boolean }>;
+};
+
+/** Merkle proof for one odds update — the batch root is anchored on Solana. */
+export async function fetchOddsValidation(
+  messageId: string,
+  ts: number,
+): Promise<OddsProof | null> {
+  try {
+    return await get<OddsProof>(
+      `/odds/validation?messageId=${encodeURIComponent(messageId)}&ts=${ts}`,
+    );
+  } catch (err) {
+    console.error("[txline] odds validation fetch failed:", err);
+    return null;
+  }
 }
 
 async function fetchOddsFor(fixtureId: number): Promise<OddsSnapshot[]> {
@@ -256,9 +246,14 @@ async function participant1IsHome(fixtureId: number): Promise<boolean> {
 }
 
 /** Latest market win probability (+ best-effort scoreline) for one fixture. */
-export async function fetchMatchPoint(
-  fixtureId: string,
-): Promise<{ p: number; minute: number; scoreHome: number; scoreAway: number } | null> {
+export async function fetchMatchPoint(fixtureId: string): Promise<{
+  p: number;
+  minute: number;
+  scoreHome: number;
+  scoreAway: number;
+  messageId: string;
+  ts: number;
+} | null> {
   const id = Number(fixtureId);
   const [odds, score, p1Home] = await Promise.all([
     fetchOddsFor(id),
@@ -278,5 +273,7 @@ export async function fetchMatchPoint(
     minute: secs > 0 ? Math.min(120, Math.ceil(secs / 60)) : 0,
     scoreHome: scoreP1IsHome ? p1Goals : p2Goals,
     scoreAway: scoreP1IsHome ? p2Goals : p1Goals,
+    messageId: pcts.messageId,
+    ts: pcts.ts,
   };
 }

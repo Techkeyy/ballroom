@@ -86,7 +86,8 @@ function loadKeypair() {
 async function ensureSol(connection, pubkey) {
   const bal = await connection.getBalance(pubkey);
   console.log(`Balance: ${bal / LAMPORTS_PER_SOL} SOL`);
-  if (bal >= 0.05 * LAMPORTS_PER_SOL) return;
+  // Real need: ~0.00204 SOL ATA rent + dust for fees.
+  if (bal >= 0.0025 * LAMPORTS_PER_SOL) return;
   if (NETWORK !== "devnet") {
     throw new Error("Mainnet wallet needs SOL for fees — fund it and retry.");
   }

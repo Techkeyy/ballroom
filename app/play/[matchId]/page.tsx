@@ -13,8 +13,10 @@ import {
   scoreGuess,
   scoreCrowd,
   nextStreak,
+  verdict,
 } from "@/lib/game";
 import { load, save, type Persisted } from "@/lib/store";
+import { reportRoundToLeague } from "@/lib/league";
 
 type Phase = "idle" | "locked" | "resolved";
 
@@ -37,6 +39,7 @@ export default function MatchPage() {
   const [msLeft, setMsLeft] = useState(PREDICT_WINDOW_MS);
   const [result, setResult] = useState<Result | null>(null);
   const [gained, setGained] = useState(0);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
 
   // refs so the resolve timer reads live values without re-subscribing
   const matchRef = useRef<Match | null>(null);
@@ -107,6 +110,43 @@ export default function MatchPage() {
       const next = { ...prev, bots, player };
       save(next);
 
+      // Share the result with the real table, if seated at one (best-effort).
+      if (prev.leagueCode && prev.player) {
+        const code = prev.leagueCode;
+        const addr = prev.player.address;
+        queueMicrotask(() => reportRoundToLeague(code, addr, points, beatCrowd));
+      }
+
+      // Freeze the round as a shareable receipt (best-effort).
+      queueMicrotask(async () => {
+        try {
+          const res = await fetch("/api/receipt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              playerName: player.name,
+              home: m.home,
+              away: m.away,
+              homeCode: m.homeCode,
+              minute: m.minute,
+              startProb: locked.startProb,
+              guess: locked.guess,
+              actual,
+              points,
+              streak,
+              verdict: verdict(points).label,
+              // ties the receipt to the exact oracle message that resolved it
+              marketMessageId: m.marketMessageId,
+              marketTs: m.marketTs,
+            }),
+          });
+          const body = (await res.json()) as { id?: string };
+          if (body.id) setReceiptId(body.id);
+        } catch {
+          /* copy-text fallback still works */
+        }
+      });
+
       setGained(points);
       setResult({
         startProb: locked.startProb,
@@ -149,6 +189,7 @@ export default function MatchPage() {
   function playAgain() {
     setResult(null);
     setGained(0);
+    setReceiptId(null);
     if (match) setGuess(Math.round(match.current));
     setPhase("idle");
   }
@@ -192,8 +233,8 @@ export default function MatchPage() {
 
       {/* the matchup */}
       <div className="mb-6 text-center">
-        <p className="font-display text-[26px] font-medium leading-tight text-ivory">
-          {match.home} <span className="italic text-ivory-faint">v</span>{" "}
+        <p className="font-display text-[27px] font-semibold leading-tight text-ivory">
+          {match.home} <span className="italic font-normal text-ivory-faint">v</span>{" "}
           {match.away}
         </p>
         <p className="eyebrow mt-2">{match.homeCode} win probability</p>
@@ -218,6 +259,7 @@ export default function MatchPage() {
           points={result.points}
           streak={result.streak}
           playerName={state.player.name}
+          receiptId={receiptId}
           onPlayAgain={playAgain}
         />
       ) : (
@@ -234,8 +276,14 @@ export default function MatchPage() {
       {/* the table */}
       <div className="mt-6">
         <Leaderboard
-          player={{ name: state.player.name, points: state.player.points }}
+          player={{
+            address: state.player.address,
+            name: state.player.name,
+            points: state.player.points,
+          }}
           bots={state.bots}
+          leagueCode={state.leagueCode}
+          leagueName={state.league}
           highlightDelta={phase === "resolved" ? gained : undefined}
         />
       </div>

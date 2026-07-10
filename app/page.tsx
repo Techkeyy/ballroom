@@ -3,22 +3,47 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import WalletButton from "@/components/WalletButton";
-import { load, signIn, shortAddr, type Player } from "@/lib/store";
+import { load, signIn, setLeague as seatAtLeague, shortAddr, type Player } from "@/lib/store";
+import { createLeague, leagueLink } from "@/lib/league";
 
 export default function Home() {
   const router = useRouter();
   const [player, setPlayer] = useState<Player | null>(null);
-  const [league, setLeague] = useState("The Lads");
+  const [league, setLeague] = useState("House Table");
+  const [leagueCode, setLeagueCode] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const s = load();
     setPlayer(s.player);
     setLeague(s.league);
+    setLeagueCode(s.leagueCode);
   }, []);
 
   function handleSignIn(name: string, address?: string) {
     const s = signIn(name, address);
     setPlayer(s.player);
+  }
+
+  async function handleCreateTable() {
+    if (!player || creating) return;
+    setCreating(true);
+    try {
+      const l = await createLeague(`${player.name}'s Table`, player.address, player.name);
+      seatAtLeague(l.code, l.name);
+      setLeague(l.name);
+      setLeagueCode(l.code);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function copyInvite() {
+    if (!leagueCode) return;
+    navigator.clipboard?.writeText(leagueLink(leagueCode));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
   }
 
   return (
@@ -44,7 +69,7 @@ export default function Home() {
         {player ? (
           <div className="space-y-6">
             <div className="text-center">
-              <p className="eyebrow mb-2">At the table</p>
+              <p className="eyebrow mb-2 !text-gold">At the table</p>
               <p className="font-display text-3xl font-medium text-ivory">
                 {player.name}
               </p>
@@ -65,13 +90,28 @@ export default function Home() {
             >
               Enter the Ball Room
             </button>
+
+            {leagueCode ? (
+              <button onClick={copyInvite} className="btn btn-ghost w-full py-3">
+                {copied ? "Invite copied" : `Invite to table ${leagueCode}`}
+              </button>
+            ) : (
+              <button
+                onClick={handleCreateTable}
+                disabled={creating}
+                className="btn btn-ghost w-full py-3 disabled:opacity-50"
+              >
+                {creating ? "Setting the table" : "Open your own table"}
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-6">
             <div className="text-center">
-              <p className="eyebrow mb-2">Invitation · {league}</p>
+              <p className="eyebrow mb-2 !text-gold">Take a seat</p>
               <p className="text-sm leading-relaxed text-ivory-dim">
-                Your friend saved you a seat. The wallet is the invitation.
+                Your wallet is the invitation. Pick a name your table will know
+                you by.
               </p>
             </div>
             <WalletButton onSignIn={handleSignIn} />
@@ -129,10 +169,10 @@ function Step({
         {n}
       </span>
       <div>
-        <p className="font-display text-lg font-medium leading-6 text-ivory">
+        <p className="font-display text-[19px] font-semibold leading-6 text-ivory">
           {title}
         </p>
-        <p className="mt-1 text-[13px] leading-relaxed text-ivory-faint">
+        <p className="mt-1.5 text-[14px] leading-relaxed text-ivory-dim">
           {children}
         </p>
       </div>

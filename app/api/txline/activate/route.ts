@@ -35,6 +35,7 @@ export async function POST(req: Request) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${jwt}`,
       },
+      // leagues [] = the standard free World Cup bundle
       body: JSON.stringify({ txSig, walletSignature, leagues: leagues ?? [] }),
     });
     if (!res.ok) {

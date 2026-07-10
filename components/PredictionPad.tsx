@@ -40,7 +40,7 @@ export default function PredictionPad({
             }}
           />
         </div>
-        <p className="tabular mt-3 font-mono text-[11px] tracking-[0.18em] text-ivory-dim">
+        <p className="tabular mt-3 font-mono text-[12px] tracking-[0.12em] text-ivory-dim">
           RESOLVES IN {secs}S — WATCH THE THREAD
         </p>
       </div>
@@ -60,7 +60,7 @@ export default function PredictionPad({
         {guess}
         <span className="text-2xl text-ivory-faint">%</span>
       </p>
-      <p className="tabular mb-6 mt-2 text-center font-mono text-[10px] tracking-[0.18em] text-ivory-faint">
+      <p className="tabular mb-6 mt-2 text-center font-mono text-[11px] tracking-[0.12em] text-ivory-dim">
         {delta === 0
           ? "HOLDING FLAT"
           : delta > 0
