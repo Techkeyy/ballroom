@@ -1,169 +1,128 @@
-# Ball Room — 10x Roadmap
+# Ball Room — 10x Roadmap (v2)
 
 Cross-referenced against the TxODDS "Consumer and Fan Experiences" judging criteria.
-Deadline: **submissions close July 19, 2026, 23:59 UTC.** Today's build is a working
-end-to-end product on live devnet TxLINE data; this roadmap is ranked by
-**points-per-day against the actual rubric**, not by ambition.
+**Submissions close July 19, 2026, 23:59 UTC.**
 
-Judging criteria shorthand used below:
-**UX** = Fan Accessibility & UX · **RT** = Real-Time Responsiveness ·
+Criteria shorthand: **UX** = Fan Accessibility & UX · **RT** = Real-Time Responsiveness ·
 **OR** = Originality & Value Creation · **COM** = Commercial & Monetization ·
-**EX** = Completeness & Execution
+**EX** = Completeness & Execution.
 
 ---
 
-## P0 — Submission-critical (must land before July 19)
+## Shipped since v1 (all live, verified on mainnet TxLINE)
 
-### 0.1 Mainnet real-time feed (service level 12)
-Devnet free tier is 60-second delayed. Level 12 is **zero-delay and free** — the
-number visibly breathes during the demo video, which judges weight heavily.
-**Criteria:** RT (primary), EX
-**Work:** run `scripts/activate-freetier.mjs --network mainnet --level 12` with a
-funded wallet (~$0.01 SOL fees); swap `TXLINE_BASE_URL` + `TXLINE_API_TOKEN` in Vercel.
-**Acceptance:**
-- [ ] `/api/txline/matches` served from `txline.txodds.com` (mainnet host)
-- [ ] Market % on the match screen changes within ~2s of the raw feed changing
-- [ ] Demo video shows the number moving during live play, timestamped against the broadcast
+- ✅ **Mainnet real-time feed** (service level 12, zero-delay)
+- ✅ **Synchronized server-authoritative league rounds** — one shared clock per (league, match); the server reads the live market at open + resolve, scores every guess at once, ranks the humans. Verified 2-player end-to-end.
+- ✅ **All synthetic/bot data removed** — real humans only
+- ✅ **Real invite-link leagues** (`/join/[code]`, Vercel KV)
+- ✅ **OG-image receipts** (`/r/[id]` gold ticket, unfurls in chats)
+- ✅ **Solana-verified receipts** — TxLINE Merkle proof attached + `/verify` re-attestation
+- ✅ **Connectivity hardening** — last-good cache kills the connect/disconnect flap; decoupled fetch(1s)/render(120ms) loops = smooth "snake" chart; real **LIVE / PRE / FT** detection
+- ✅ **Full 3-way market** shown (home/draw/away) so a round reads as a match, not one team
+- ✅ **Proper national team codes** (FIFA-style map)
+- ✅ **Configurable round window** (`NEXT_PUBLIC_ROUND_SECONDS`, default 90s)
+- ✅ **Cinematic hero** (feathered poster) + ambient theme music with toggle
 
-### 0.2 Real leagues — invite links + shared tables
-The core social loop is currently local-only with labelled house players. Real
-friends racing each other is the product's whole thesis — and the single biggest
-UX/OR unlock. Small scope: one Upstash Redis (or Vercel KV) store, no auth beyond
-the wallet address already in hand.
-**Criteria:** UX + OR (primary), COM
-**Work:** `POST /api/league` (create, returns code) · `/join/[code]` route ·
-league members + per-round calls keyed in KV · leaderboard reads KV instead of
-localStorage · house players fill seats only until 2+ humans join.
-**Acceptance:**
-- [ ] Create league → shareable link (`ballroom-eight.vercel.app/join/XXXX`)
-- [ ] Second device joins via link, appears on the first device's table within 5s
-- [ ] Both players lock calls on the same round; resolve shows both scores ranked
-- [ ] House players visibly labelled and auto-benched when ≥2 humans are seated
+---
 
-### 0.3 Match moments on the heartbeat (goals, cards, big swings)
-The Scores stream already flows through our adapter. Plotting **goal/red-card
-markers on the gold thread** connects "what happened on the pitch" to "what the
-market did" — the exact fan-comprehension moment the track description asks for.
-**Criteria:** RT + UX (primary), OR
-**Work:** extend `fetchMatchPoint` to surface latest event type; drop vertical
-markers + minute labels on the Heartbeat SVG; toast on goal ("GOAL — market
-repricing").
-**Acceptance:**
-- [ ] A goal in the raw feed renders a marker on the chart within one poll cycle
-- [ ] Marker shows minute + event type on tap/hover
-- [ ] Round in progress is annotated if a goal lands inside the window ("goal mid-round")
+## P0 — Submission-critical (before July 19)
 
-### 0.4 OG-image receipts
-The share card is the viral loop, but a copied text blob doesn't unfurl. A
-`/r/[id]` page + `next/og` image makes every brag a rendered gold ticket in
-WhatsApp/X — each share is an ad.
-**Criteria:** COM + UX (primary)
-**Work:** persist resolved rounds (same KV as 0.2) · `/r/[id]` page with
-`opengraph-image` route rendering the engraved-ticket layout (Satori: pass
-`fonts` array; no text-stroke).
+### 0.1 Submission package (the screening gate)
+**Criteria:** gate for everything — no video/docs, no pass.
 **Acceptance:**
-- [ ] "Share the receipt" copies a URL, not a text blob
-- [ ] Pasting the URL in X/WhatsApp unfurls the gold ticket image with the numbers
-- [ ] Receipt page has one CTA: "Take a seat" → landing
+- [ ] ≤5-min demo video (problem → live walkthrough during a match → how TxLINE powers it), recorded during a live game
+- [ ] `DOCS.md`: core idea, business/technical highlights, exact TxLINE endpoints used
+- [ ] TxLINE API feedback written into the Superteam form (material ready: raw-text activate response, PascalCase-vs-OpenAPI scores mismatch, ATA pre-create requirement, `competitionId` discovery, transient odds nulls)
+- [ ] README links deployed app + video + DOCS
 
-### 0.5 Submission package
-**Criteria:** gate for all of them — no video, no screening pass.
-**Work:** ≤5-min video (problem → live walkthrough during a real match → how
-TxLINE powers it) · `DOCS.md` (core idea, business/technical highlights, exact
-TxLINE endpoints used) · API feedback write-up (we have real material: raw-text
-activate response, PascalCase vs OpenAPI camelCase scores mismatch, ATA
-pre-create requirement, competitionId discovery).
+### 0.2 Production persistence + config sanity
+**Criteria:** EX (leagues/receipts vanish without it)
 **Acceptance:**
-- [ ] Video link (Loom/YouTube) under 5 minutes, recorded during a live match
-- [ ] Public repo README links: deployed app, video, DOCS.md
-- [ ] Feedback section drafted into the Superteam submission form
+- [ ] Vercel KV connected; a league created on one device is visible on another after redeploy
+- [ ] `NEXT_PUBLIC_ROUND_SECONDS` set for the demo (e.g. 60–90s); mainnet env confirmed
+- [ ] Asset weights optimized (hero → WebP/JPG < 400 KB; audio trimmed/compressed) for fast mobile load
 
 ---
 
 ## P1 — The 10x layer (build in order until time runs out)
 
-### 1.1 Verified receipts — Solana-anchored proof (the originality spike)
-TxLINE anchors its data on-chain and exposes **Merkle validation proofs**
-(`/api/odds/validation`). Attach the proof to each resolved round: a receipt
-that *cryptographically proves* the market really was at 8% when you called it.
-No other fan app can fake-proof a hot take. This is the deepest possible
-TxLINE integration and the cleanest OR points on the board.
-**Criteria:** OR (primary), COM — and it makes "sign up through Solana" load-bearing
+### 1.1 Round-type variety — *the direct answer to "why only 45 seconds?"*
+A single fixed window is the biggest UX limiter. Different moments deserve different clocks and questions.
+**Criteria:** UX (session length) + OR
+**Types:**
+- **Pre-match (long):** lock before kickoff, resolves at ~15′ — reads the opening momentum
+- **Live short (60–90s):** the current punchy round
+- **Halftime special:** call where the market reopens at 46′
+- **Goal aftershock:** a goal drops → a 90s round on where the market settles (auto-offered)
 **Acceptance:**
-- [ ] Resolved round stores the odds update id + Merkle proof from `/api/odds/validation`
-- [ ] Receipt page shows "VERIFIED ON SOLANA" with a link that independently checks the proof
-- [ ] Tampered numbers fail verification in the checker
+- [ ] Round picker shows ≥2 live types during a match; aftershock auto-offers within 10s of a goal
+- [ ] Each type has its own window + copy; the receipt names the round type
+- [ ] League rounds stay synchronized per type
 
-### 1.2 SSE streaming (kill the poll)
-Swap the 1.5s REST poll for TxLINE's `/api/odds/stream` + `/api/scores/stream`
-(Server-Sent Events), proxied through one route handler. Sub-second thread.
+### 1.2 Multi-market prediction — *the direct answer to "why one-sided?"*
+Today you call the home-win line. Let players call the market that interests them: **away win, draw, next-goal timing, total goals, corners** — any number TxLINE exposes.
+**Criteria:** OR + UX + deeper TxLINE use
+**Acceptance:**
+- [ ] Solo: pick which outcome/stat to call from the live market menu; scoring/receipt reflect it
+- [ ] League: the round names its market (e.g. "SUI win %", "total goals") so everyone calls the same one
+- [ ] The 3-way strip is tappable to switch the called leg (solo)
+
+### 1.3 SSE streaming (kill the poll)
+Swap the 1s REST poll for TxLINE's `/api/odds/stream` + `/api/scores/stream`, proxied through one route. Sub-second, event-driven.
 **Criteria:** RT
 **Acceptance:**
 - [ ] One SSE connection per viewed match, auto-reconnect on drop
-- [ ] p95 feed-to-pixel latency < 1s on mainnet level 12
-- [ ] Poll code path remains as fallback behind an env flag
+- [ ] p95 feed-to-pixel < 1s on mainnet L12
+- [ ] Poll path kept behind an env flag as fallback
 
-### 1.3 Round variety — the session extender
-One 45s round type gets stale by minute 60. Add: **pre-match calls** (lock
-before kickoff, resolve at 15′), **halftime specials** (call the 46′ reopen),
-**goal aftershock** (goal lands → 90s round on where the market settles).
-**Criteria:** UX (session length), OR
+### 1.4 Match moments on the heartbeat
+Plot goal / red-card / big-swing markers on the gold thread (the Scores stream already flows through the adapter), with a toast on goals ("GOAL — market repricing").
+**Criteria:** RT + UX + OR
 **Acceptance:**
-- [ ] Round picker with 2+ live types during any match; aftershock auto-offers within 10s of a goal
-- [ ] Each type has distinct copy + scoring window; receipts name the round type
+- [ ] A goal in the feed renders a marker within one cycle; tap shows minute + type
+- [ ] A round in progress is annotated if a goal lands inside its window
 
-### 1.4 The Floor — multi-match excitement router
-One screen ranking all live matches by **market volatility right now** (rolling
-σ of the win-prob series — already in client memory). "Which game should I be
-watching?" — RedZone for the market. During group stages with simultaneous
-kickoffs this is the killer view; still useful across knockout evenings.
+### 1.5 The Floor — multi-match excitement router
+One screen ranking live matches by **market volatility right now** (rolling σ of the win-prob series, already in client memory). "Which game should I be watching?" — RedZone for the market.
 **Criteria:** OR + UX
 **Acceptance:**
 - [ ] `/floor` ranks live matches by 5-min volatility, updating without reload
-- [ ] Tapping a row lands in the match screen in one tap
-- [ ] Top mover carries a visible "moving now" treatment
+- [ ] One tap into any match; top mover carries a "moving now" treatment
 
-### 1.5 PWA + kickoff notifications
-Phones are the stated context ("most fans… with a phone in their hand").
-Add manifest + service worker + push ("Spain v Belgium is open — the table is
-seated").
-**Criteria:** UX, COM (retention)
+### 1.6 PWA + kickoff notifications
+Phones are the stated context. Manifest + service worker + push ("Argentina v Switzerland is open — the table is seated").
+**Criteria:** UX + COM (retention)
 **Acceptance:**
-- [ ] Add-to-home-screen works (Lighthouse PWA installable)
-- [ ] Opted-in device gets a push at kickoff of a followed match
-- [ ] App opens from the notification directly into that match
+- [ ] Installable (Lighthouse PWA pass)
+- [ ] Opted-in device gets a kickoff push and opens straight into the match
 
 ---
 
-## P2 — Post-hackathon / monetization narrative (document, don't build)
+## P2 — Monetization narrative (document in DOCS, don't build)
 
-These go in DOCS.md as the commercial path (COM criterion is judged on
-*clarity of path*, not shipped billing):
-
-- **Sponsored rounds** — "this 45-second window presented by …"; native, non-intrusive, priced per impression during peak moments.
-- **Premium tables** — bigger leagues, season-long standings, custom round types; entry passes settled on Solana.
-- **Creator receipts** — embeddable verified-receipt widgets for pundits/streamers; the proof layer (1.1) is the moat.
-- **B2B** — the excitement-router signal (1.4) licensed to broadcasters/whip-around shows.
+COM is judged on *clarity of path*, not shipped billing:
+- **Sponsored rounds** — "this 90-second window presented by …", priced per impression at peak moments
+- **Premium tables** — season-long standings, custom round types; entry passes settled on Solana
+- **Creator receipts** — embeddable verified-receipt widgets for pundits/streamers (the proof layer is the moat)
+- **B2B** — the excitement-router signal (1.5) licensed to broadcasters / whip-around shows
 
 ---
 
 ## Explicitly out of scope (and why)
+- **Real money / wagering** — the track warns on gambling law; skill-only is a feature
+- **The brief's own example ideas** (AI pundit bot, hi-lo stats game) — building them scores *repackaging*, not originality
+- **A custom Solana program** — TxLINE's subscribe program + message-signing already make the wallet load-bearing; new on-chain code is EX risk with no rubric payoff
 
-- **Real-money anything** — the track warns on gambling law; skill-only is a feature.
-- **Native mobile apps** — PWA covers the demo; app-store cycles don't fit 9 days.
-- **AI pundit bot / hi-lo stats game** — those are the brief's own example ideas; building them scores repackaging, not originality.
-- **Custom Solana program** — TxLINE's subscribe program + message-signing already make the wallet load-bearing; new on-chain code is EX risk with no rubric payoff.
-
-## Requirements cross-check (current status)
+## Requirements cross-check
 
 | Hackathon requirement | Status |
 |---|---|
-| Live product working during a match | ✅ verified live (devnet); 0.1 upgrades to real-time mainnet |
-| TxLINE as live input | ✅ Fixtures/Odds/Scores snapshots; 1.2 adds streams, 1.1 adds Validation Proofs |
-| Sign up through Solana | ✅ wallet sign-in + on-chain TxLINE subscription (one wallet action) |
+| Live product working during a match | ✅ mainnet real-time, resilient |
+| TxLINE as live input | ✅ Fixtures/Odds/Scores + Validation Proofs; SSE at 1.3 |
+| Sign up through Solana | ✅ wallet sign-in + on-chain TxLINE subscription (one action) |
 | Deployed link | ✅ ballroom-eight.vercel.app |
 | Public repo | ✅ |
-| Demo video ≤5 min | ⬜ 0.5 |
-| Technical documentation | ⬜ 0.5 |
-| API feedback | ⬜ 0.5 (material already collected) |
-| Functional, not mockup | ✅ full loop playable end-to-end |
+| Demo video ≤5 min | ⬜ 0.1 |
+| Technical documentation | ⬜ 0.1 |
+| API feedback | ⬜ 0.1 (material collected) |
+| Functional, not mockup | ✅ full loop, real multiplayer, verified receipts |

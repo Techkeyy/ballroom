@@ -29,7 +29,11 @@ export type Match = {
   scoreHome: number;
   scoreAway: number;
   current: number; // current home win probability, 0..100
+  drawPct?: number;
+  awayPct?: number;
   history: OddsPoint[];
+  /** True only when the fixture is actually in-play (in-running odds / clock). */
+  live?: boolean;
   /** Identity of the TxLINE odds update behind `current` (live mode only) —
    * lets a resolved round anchor to a Merkle-proven oracle message. */
   marketMessageId?: string;
@@ -175,67 +179,136 @@ async function fetchRealMatch(id: string): Promise<Match | null> {
 }
 
 /**
- * Live subscription in real mode: poll our server route (which reads the TxLINE
- * odds/scores snapshots) on a ~1.5s cadence and accumulate history client-side.
- * M-next: swap this poll for the TxLINE SSE stream (/api/odds/stream) proxied
- * through a server route.
+ * Live subscription in real mode.
+ *
+ * Two decoupled loops so the chart moves smoothly ("snake") even though the
+ * network is slower and lumpier:
+ *   - FETCH loop (~1s): pulls the resilient server point (odds + score + live).
+ *     The server holds last-good values, so a transient miss never blanks us —
+ *     no connect/disconnect flap.
+ *   - RENDER loop (~120ms): eases a displayed value toward the latest real
+ *     target and appends a chart point every tick, so the line glides.
+ *
+ * The big number (`current`) always shows the *real* target (accurate); only
+ * the chart `history` uses the eased display value (smooth).
+ * M-next: swap the fetch loop for the TxLINE SSE stream (/api/odds/stream).
  */
 function subscribeRealMatch(
   id: string,
   onPoint: (p: OddsPoint, match: Match) => void,
 ): () => void {
   const history: OddsPoint[] = [];
-  let meta: Match | null = null;
   let stopped = false;
+
+  type Target = {
+    p: number;
+    pDraw: number;
+    pAway: number;
+    minute: number;
+    scoreHome: number;
+    scoreAway: number;
+    live: boolean;
+    messageId?: string;
+    ts?: number;
+    home: string;
+    away: string;
+    homeCode: string;
+    awayCode: string;
+  };
+  let target: Target | null = null;
+  let display = 50;
 
   fetchRealMatch(id).then((m) => {
     if (m && !stopped) {
-      meta = m;
-      history.push(...m.history);
+      display = m.current;
+      target = {
+        p: m.current,
+        pDraw: m.drawPct ?? 0,
+        pAway: m.awayPct ?? 0,
+        minute: m.minute,
+        scoreHome: m.scoreHome,
+        scoreAway: m.scoreAway,
+        live: Boolean(m.live),
+        home: m.home,
+        away: m.away,
+        homeCode: m.homeCode,
+        awayCode: m.awayCode,
+      };
     }
   });
 
-  const interval = setInterval(async () => {
+  async function pull() {
     try {
       const res = await fetch(`/api/txline/match/${id}`, { cache: "no-store" });
       if (!res.ok) return;
       const pt = (await res.json()) as {
         p: number;
+        pDraw?: number;
+        pAway?: number;
         minute: number;
         scoreHome: number;
         scoreAway: number;
+        live?: boolean;
         messageId?: string;
         ts?: number;
       };
-      const point: OddsPoint = { t: Date.now(), p: pt.p };
-      history.push(point);
-      if (history.length > 180) history.shift();
-      const match: Match = {
-        ...(meta ?? {
-          id,
+      target = {
+        ...(target ?? {
           home: "Home",
           away: "Away",
           homeCode: "HOM",
           awayCode: "AWY",
         }),
+        p: pt.p,
+        pDraw: pt.pDraw ?? 0,
+        pAway: pt.pAway ?? 0,
         minute: pt.minute,
         scoreHome: pt.scoreHome,
         scoreAway: pt.scoreAway,
-        current: pt.p,
-        history: [...history],
-        marketMessageId: pt.messageId,
-        marketTs: pt.ts,
-      } as Match;
-      meta = match;
-      onPoint(point, match);
+        live: Boolean(pt.live),
+        messageId: pt.messageId,
+        ts: pt.ts,
+      };
     } catch {
-      /* transient network error — keep polling */
+      /* hold last target — the server already holds last-good */
     }
-  }, 1500);
+  }
+
+  const fetchLoop = setInterval(pull, 1000);
+  pull();
+
+  const renderLoop = setInterval(() => {
+    if (!target) return;
+    // ease toward the real value; snap when essentially there
+    const d = target.p - display;
+    display = Math.abs(d) < 0.08 ? target.p : display + d * 0.28;
+    const point: OddsPoint = { t: Date.now(), p: Math.round(display * 100) / 100 };
+    history.push(point);
+    if (history.length > 220) history.shift();
+    const match: Match = {
+      id,
+      home: target.home,
+      away: target.away,
+      homeCode: target.homeCode,
+      awayCode: target.awayCode,
+      minute: target.minute,
+      scoreHome: target.scoreHome,
+      scoreAway: target.scoreAway,
+      current: target.p, // accurate real value for the big number
+      drawPct: target.pDraw,
+      awayPct: target.pAway,
+      live: target.live,
+      history: [...history],
+      marketMessageId: target.messageId,
+      marketTs: target.ts,
+    };
+    onPoint(point, match);
+  }, 120);
 
   return () => {
     stopped = true;
-    clearInterval(interval);
+    clearInterval(fetchLoop);
+    clearInterval(renderLoop);
   };
 }
 

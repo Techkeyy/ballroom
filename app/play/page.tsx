@@ -35,7 +35,7 @@ export default function PlayPage() {
   }, []);
 
   return (
-    <main className="py-10">
+    <main className="mx-auto max-w-5xl px-6 py-10 md:px-10">
       {/* header */}
       <div className="mb-8 flex items-end justify-between border-b border-white/[0.07] pb-5">
         <div>
@@ -60,12 +60,12 @@ export default function PlayPage() {
         </span>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {matches.map((m, i) => (
           <MatchCard key={m.id} match={m} index={i} />
         ))}
         {matches.length === 0 && (
-          <p className="py-20 text-center font-display text-lg italic text-ivory-faint">
+          <p className="col-span-full py-20 text-center font-display text-lg italic text-ivory-faint">
             The floor is being polished…
           </p>
         )}
@@ -91,12 +91,22 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
     >
       <div className="mb-4 flex items-center justify-between">
         <span className="flex items-center gap-2">
-          <span className="h-1 w-1 animate-pulseDot rounded-full bg-gold" />
-          <span className="eyebrow">{match.minute}′ live</span>
+          {match.live && (
+            <span className="h-1 w-1 animate-pulseDot rounded-full bg-gold" />
+          )}
+          <span className={`eyebrow ${match.live ? "!text-gold" : ""}`}>
+            {match.live
+              ? `${match.minute}′ live`
+              : match.minute > 0
+                ? "full time"
+                : "pre-match"}
+          </span>
         </span>
-        <span className="tabular font-num text-sm text-ivory-dim">
-          {match.scoreHome}–{match.scoreAway}
-        </span>
+        {(match.live || match.minute > 0) && (
+          <span className="tabular font-num text-sm text-ivory-dim">
+            {match.scoreHome}–{match.scoreAway}
+          </span>
+        )}
       </div>
 
       <div className="flex items-end justify-between gap-4">

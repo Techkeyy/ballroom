@@ -34,6 +34,10 @@ export default function MatchPage() {
   const lockRef = useRef<{ startProb: number; guess: number } | null>(null);
   const receiptDone = useRef<string | null>(null);
 
+  // always-fresh state for callbacks that fire outside render (timers)
+  const stateRef = useRef<Persisted | null>(null);
+  stateRef.current = state;
+
   const leagueMode = Boolean(state?.leagueCode);
   const player = { address: state?.player?.address ?? "", name: state?.player?.name ?? "" };
   const meta = {
@@ -125,43 +129,43 @@ export default function MatchPage() {
   const resolveSolo = useCallback(() => {
     const locked = lockRef.current;
     const m = matchRef.current;
-    if (!locked || !m) return;
+    const prev = stateRef.current;
+    if (!locked || !m || !prev?.player) return;
+
     const actual = Math.round(m.current * 10) / 10;
     const points = scoreGuess(locked.guess, actual);
+    const kept = points >= SHARP_BAR;
+    const streak = nextStreak(prev.player.streak, kept);
+    const p = {
+      ...prev.player,
+      points: prev.player.points + points,
+      streak,
+      bestStreak: Math.max(prev.player.bestStreak, streak),
+      rounds: prev.player.rounds + 1,
+    };
+    const next = { ...prev, player: p };
 
-    setState((prev) => {
-      if (!prev || !prev.player) return prev;
-      const kept = points >= SHARP_BAR;
-      const streak = nextStreak(prev.player.streak, kept);
-      const p = {
-        ...prev.player,
-        points: prev.player.points + points,
-        streak,
-        bestStreak: Math.max(prev.player.bestStreak, streak),
-        rounds: prev.player.rounds + 1,
-      };
-      const next = { ...prev, player: p };
-      save(next);
-      setGained(points);
-      setResult({ startProb: locked.startProb, guess: locked.guess, actual, points, streak });
-      writeReceipt({
-        home: m.home,
-        away: m.away,
-        homeCode: m.homeCode,
-        minute: m.minute,
-        startProb: locked.startProb,
-        guess: locked.guess,
-        actual,
-        points,
-        streak,
-        marketMessageId: m.marketMessageId,
-        marketTs: m.marketTs,
-        key: `solo-${m.id}-${locked.startProb}-${Date.now()}`,
-      });
-      return next;
-    });
+    save(next);
+    setState(next);
+    setGained(points);
+    setResult({ startProb: locked.startProb, guess: locked.guess, actual, points, streak });
     setPhase("resolved");
     lockRef.current = null;
+
+    writeReceipt({
+      home: m.home,
+      away: m.away,
+      homeCode: m.homeCode,
+      minute: m.minute,
+      startProb: locked.startProb,
+      guess: locked.guess,
+      actual,
+      points,
+      streak,
+      marketMessageId: m.marketMessageId,
+      marketTs: m.marketTs,
+      key: `solo-${m.id}-${locked.startProb}-${Date.now()}`,
+    });
   }, [writeReceipt]);
 
   useEffect(() => {
@@ -216,13 +220,11 @@ export default function MatchPage() {
   // mirror authoritative league standing into local store (landing page)
   useEffect(() => {
     if (!leagueMode || !sync.myMember) return;
-    setState((prev) => {
-      if (!prev?.player) return prev;
-      const p = { ...prev.player, ...sync.myMember };
-      const next = { ...prev, player: p };
-      save(next);
-      return next;
-    });
+    const prev = stateRef.current;
+    if (!prev?.player) return;
+    const next = { ...prev, player: { ...prev.player, ...sync.myMember } };
+    save(next);
+    setState(next);
   }, [leagueMode, sync.myMember]);
 
   useEffect(() => {
@@ -236,6 +238,17 @@ export default function MatchPage() {
       </p>
     );
   }
+
+  // ---- live status ---------------------------------------------------------
+  const isLive = dataSource === "simulator" ? true : Boolean(match.live);
+  const statusLabel =
+    dataSource === "simulator"
+      ? "SIM"
+      : isLive
+        ? "LIVE"
+        : match.minute > 0
+          ? "FT"
+          : "PRE";
 
   // ---- unified view model --------------------------------------------------
   const uiPhase: Phase | "opening" = leagueMode
@@ -270,9 +283,9 @@ export default function MatchPage() {
     leagueMode && uiPhase === "resolved" ? sync.otherGuesses : [];
 
   return (
-    <main className="py-8">
+    <main className="mx-auto max-w-5xl px-6 py-8 md:px-10">
       {/* header */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-8 flex items-center justify-between border-b border-white/[0.07] pb-5">
         <Link href="/play" className="eyebrow transition-colors hover:text-ivory-dim">
           ← The card
         </Link>
@@ -280,92 +293,137 @@ export default function MatchPage() {
           className="flex items-center gap-2 font-mono text-[10px] tracking-[0.18em] text-ivory-faint"
           data-source={dataSource}
         >
-          <span
-            className="h-1 w-1 animate-pulseDot rounded-full bg-gold"
-            style={{ boxShadow: "0 0 8px rgba(226,182,91,0.6)" }}
-          />
-          <span className="tabular">
-            {match.minute}′ · {match.scoreHome}–{match.scoreAway}
-          </span>
-          <span className={dataSource === "txline" ? "text-gold" : ""}>
-            {dataSource === "txline" ? "LIVE" : "SIM"}
-          </span>
+          {isLive && (
+            <span
+              className="h-1 w-1 animate-pulseDot rounded-full bg-gold"
+              style={{ boxShadow: "0 0 8px rgba(226,182,91,0.6)" }}
+            />
+          )}
+          {match.minute > 0 && (
+            <span className="tabular">
+              {match.minute}′ · {match.scoreHome}–{match.scoreAway}
+            </span>
+          )}
+          <span className={isLive ? "text-gold" : ""}>{statusLabel}</span>
         </span>
       </div>
 
-      {/* the matchup */}
-      <div className="mb-6 text-center">
-        <p className="font-display text-[27px] font-semibold leading-tight text-ivory">
-          {match.home} <span className="italic font-normal text-ivory-faint">v</span>{" "}
-          {match.away}
-        </p>
-        <p className="eyebrow mt-2">{match.homeCode} win probability</p>
-        <p className="tabular mt-3 font-num text-[76px] font-light leading-none text-gold">
-          {Math.round(match.current)}
-          <span className="text-3xl text-ivory-faint">%</span>
-        </p>
-      </div>
-
-      {/* the thread */}
-      <div className="panel mb-4 p-3">
-        <Heartbeat history={match.history} guess={lockedGuess} others={othersReveal} />
-      </div>
-
-      {/* play / result */}
-      {uiPhase === "resolved" && uiResult ? (
-        <ShareCard
-          match={match}
-          startProb={uiResult.startProb}
-          guess={uiResult.guess}
-          actual={uiResult.actual}
-          points={uiResult.points}
-          streak={uiResult.streak}
-          rank={leagueMode ? sync.myResult?.rank : undefined}
-          field={leagueMode ? sync.seated : undefined}
-          playerName={state.player.name}
-          receiptId={receiptId}
-          onPlayAgain={leagueMode ? sync.playAgain : playAgainSolo}
-        />
-      ) : uiPhase === "opening" ? (
-        <div className="panel-strong p-6 text-center">
-          <p className="font-display text-lg italic text-ivory-dim">
-            Opening the next round…
-          </p>
-          <p className="eyebrow mt-2">Waiting for the live market</p>
-        </div>
-      ) : (
-        <>
-          <PredictionPad
-            current={Math.round(uiStart * 10) / 10}
-            guess={uiGuess}
-            setGuess={uiSetGuess}
-            locked={uiPhase === "locked"}
-            msLeft={uiMsLeft}
-            onLock={uiLock}
-          />
-          {leagueMode && (
-            <p className="eyebrow mt-3 text-center">
-              {sync.seated} {sync.seated === 1 ? "call" : "calls"} locked · same clock for the table
+      <div className="grid gap-6 md:grid-cols-2 md:gap-8">
+        {/* LEFT: the market */}
+        <div>
+          <div className="mb-6 text-center md:text-left">
+            <p className="font-display text-[30px] font-semibold leading-tight text-ivory">
+              {match.home}{" "}
+              <span className="italic font-normal text-ivory-faint">v</span>{" "}
+              {match.away}
             </p>
-          )}
-        </>
-      )}
+            <p className="eyebrow mt-2">{match.home} win probability</p>
+            <p className="tabular mt-3 font-num text-[76px] font-light leading-none text-gold md:text-[88px]">
+              {Math.round(match.current)}
+              <span className="text-3xl text-ivory-faint">%</span>
+            </p>
 
-      {/* the table */}
-      <div className="mt-6">
-        <Leaderboard
-          player={{
-            address: state.player.address,
-            name: state.player.name,
-            points: state.player.points,
-            streak: state.player.streak,
-          }}
-          leagueCode={state.leagueCode}
-          leagueName={state.league}
-          highlightDelta={uiPhase === "resolved" ? uiResult?.points : undefined}
-          refreshKey={uiPhase === "resolved" ? 1 : 0}
-        />
+            {/* full 3-way market, so it reads as a match — not one country */}
+            {match.awayPct != null && match.drawPct != null && (
+              <div className="mt-4 flex items-stretch gap-1.5 md:max-w-[340px]">
+                <MarketLeg code={match.homeCode} pct={match.current} you />
+                <MarketLeg code="DRAW" pct={match.drawPct} />
+                <MarketLeg code={match.awayCode} pct={match.awayPct} />
+              </div>
+            )}
+          </div>
+
+          {/* the thread */}
+          <div className="panel p-3">
+            <Heartbeat history={match.history} guess={lockedGuess} others={othersReveal} />
+          </div>
+        </div>
+
+        {/* RIGHT: play + table */}
+        <div className="space-y-6">
+          {uiPhase === "resolved" && uiResult ? (
+            <ShareCard
+              match={match}
+              startProb={uiResult.startProb}
+              guess={uiResult.guess}
+              actual={uiResult.actual}
+              points={uiResult.points}
+              streak={uiResult.streak}
+              rank={leagueMode ? sync.myResult?.rank : undefined}
+              field={leagueMode ? sync.seated : undefined}
+              playerName={state.player.name}
+              receiptId={receiptId}
+              onPlayAgain={leagueMode ? sync.playAgain : playAgainSolo}
+            />
+          ) : uiPhase === "opening" ? (
+            <div className="panel-strong p-6 text-center">
+              <p className="font-display text-lg italic text-ivory-dim">
+                Opening the next round…
+              </p>
+              <p className="eyebrow mt-2">Waiting for the live market</p>
+            </div>
+          ) : (
+            <div>
+              <PredictionPad
+                current={Math.round(uiStart * 10) / 10}
+                guess={uiGuess}
+                setGuess={uiSetGuess}
+                locked={uiPhase === "locked"}
+                msLeft={uiMsLeft}
+                onLock={uiLock}
+                homeCode={match.homeCode}
+              />
+              {leagueMode && (
+                <p className="eyebrow mt-3 text-center">
+                  {sync.seated} {sync.seated === 1 ? "call" : "calls"} locked · same
+                  clock for the table
+                </p>
+              )}
+            </div>
+          )}
+
+          <Leaderboard
+            player={{
+              address: state.player.address,
+              name: state.player.name,
+              points: state.player.points,
+              streak: state.player.streak,
+            }}
+            leagueCode={state.leagueCode}
+            leagueName={state.league}
+            highlightDelta={uiPhase === "resolved" ? uiResult?.points : undefined}
+            refreshKey={uiPhase === "resolved" ? 1 : 0}
+          />
+        </div>
       </div>
     </main>
+  );
+}
+
+/** One outcome of the 3-way match market. The one you call is gold. */
+function MarketLeg({
+  code,
+  pct,
+  you,
+}: {
+  code: string;
+  pct: number;
+  you?: boolean;
+}) {
+  return (
+    <div
+      className={`flex-1 rounded-md border px-2 py-2 text-center ${
+        you ? "border-gold/40 bg-gold/[0.06]" : "border-white/[0.08]"
+      }`}
+    >
+      <p className={`eyebrow !text-[9px] ${you ? "!text-gold" : ""}`}>{code}</p>
+      <p
+        className={`tabular font-num text-lg font-light leading-none ${
+          you ? "text-gold" : "text-ivory-dim"
+        }`}
+      >
+        {Math.round(pct)}
+      </p>
+    </div>
   );
 }

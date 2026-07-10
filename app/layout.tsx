@@ -7,6 +7,8 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import SolanaProvider from "@/components/SolanaProvider";
+import MusicToggle from "@/components/MusicToggle";
+import AmbientBackdrop from "@/components/AmbientBackdrop";
 
 const serif = Cormorant_Garamond({
   subsets: ["latin"],
@@ -50,9 +52,9 @@ export default function RootLayout({
     >
       <body className="parquet font-sans text-ivory antialiased">
         <SolanaProvider>
-          <div className="mx-auto min-h-screen w-full max-w-md px-5">
-            {children}
-          </div>
+          <AmbientBackdrop />
+          <MusicToggle />
+          <div className="relative min-h-screen w-full">{children}</div>
         </SolanaProvider>
       </body>
     </html>

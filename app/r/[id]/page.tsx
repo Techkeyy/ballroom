@@ -31,7 +31,7 @@ export default async function ReceiptPage({
   const gold = r.points >= 90;
 
   return (
-    <main className="flex min-h-screen flex-col justify-center py-12">
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
       <header className="mb-8 text-center">
         <p className="eyebrow mb-3">A receipt from the Ball Room</p>
         <h1 className="font-display text-[34px] font-semibold leading-tight text-ivory">

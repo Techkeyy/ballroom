@@ -53,7 +53,7 @@ export default function JoinPage() {
   }, [phase]);
 
   return (
-    <main className="flex min-h-screen flex-col justify-center py-12">
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
       <header className="animate-riseIn text-center">
         <p className="eyebrow mb-5">You are invited</p>
         <h1 className="font-display text-[44px] font-semibold leading-tight text-ivory">

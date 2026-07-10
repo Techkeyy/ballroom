@@ -107,8 +107,27 @@ type ScoreSnapshot = {
 
 // ---- mapping --------------------------------------------------------------
 
+// Proper 3-letter national codes (FIFA-style). Falls back to first 3 letters
+// only for anything unmapped.
+const TEAM_CODES: Record<string, string> = {
+  Argentina: "ARG", Australia: "AUS", Austria: "AUT", Belgium: "BEL",
+  Brazil: "BRA", Cameroon: "CMR", Canada: "CAN", Chile: "CHI",
+  Colombia: "COL", Croatia: "CRO", Denmark: "DEN", Ecuador: "ECU",
+  Egypt: "EGY", England: "ENG", France: "FRA", Germany: "GER",
+  Ghana: "GHA", Greece: "GRE", Iran: "IRN", Italy: "ITA",
+  Japan: "JPN", Mexico: "MEX", Morocco: "MAR", Netherlands: "NED",
+  Nigeria: "NGA", Norway: "NOR", Peru: "PER", Poland: "POL",
+  Portugal: "POR", Qatar: "QAT", "Saudi Arabia": "KSA", Scotland: "SCO",
+  Senegal: "SEN", Serbia: "SRB", "South Korea": "KOR", Spain: "ESP",
+  Sweden: "SWE", Switzerland: "SUI", Tunisia: "TUN", Turkey: "TUR",
+  Ukraine: "UKR", Uruguay: "URU", USA: "USA", "United States": "USA",
+  Wales: "WAL",
+};
+
 function code(name: string): string {
-  return name.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase() || "???";
+  const clean = name.trim();
+  if (TEAM_CODES[clean]) return TEAM_CODES[clean];
+  return clean.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase() || "???";
 }
 
 /**
@@ -124,7 +143,7 @@ const RESULT_MARKET = "1X2_PARTICIPANT_RESULT";
 
 function participantPcts(
   snapshots: OddsSnapshot[],
-): { part1: number; part2: number; messageId: string; ts: number } | null {
+): { part1: number; draw: number; part2: number; messageId: string; ts: number } | null {
   const candidates = snapshots.filter(
     (s) =>
       s.SuperOddsType === RESULT_MARKET &&
@@ -143,9 +162,11 @@ function participantPcts(
   const sum = nums.reduce((a, b) => a + b, 0);
   if (!sum || nums.some((n) => isNaN(n))) return null;
   // Demargined already, but normalise anyway so the three sum to exactly 100.
+  const r = (n: number) => Math.round((n / sum) * 1000) / 10;
   return {
-    part1: Math.round((nums[0] / sum) * 1000) / 10,
-    part2: Math.round((nums[2] / sum) * 1000) / 10,
+    part1: r(nums[0]), // participant 1 result
+    draw: r(nums[1]),
+    part2: r(nums[2]), // participant 2 result
     messageId: latest.MessageId,
     ts: latest.Ts,
   };
@@ -194,38 +215,41 @@ async function fetchScoreFor(fixtureId: number): Promise<ScoreSnapshot | null> {
   }
 }
 
-/** Live World Cup fixtures with their current market win probability. */
+/** World Cup fixtures with their current market number, scoreline and live flag. */
 export async function fetchWorldCupMatches(): Promise<Match[]> {
   const fixtures = await get<FixtureSnapshot[]>(
     `/fixtures/snapshot?competitionId=${COMPETITION_ID}`,
   );
+  // warm the orientation cache so per-fixture reads don't refetch the list
+  for (const f of fixtures) fixtureOrientation.set(f.FixtureId, f.Participant1IsHome);
 
   const built = await Promise.all(
     fixtures.map(async (f) => {
-      const odds = await fetchOddsFor(f.FixtureId);
-      const pcts = participantPcts(odds);
-      if (pcts == null) return null;
+      const pt = await fetchMatchPoint(String(f.FixtureId));
+      if (!pt) return null;
       const home = f.Participant1IsHome ? f.Participant1 : f.Participant2;
       const away = f.Participant1IsHome ? f.Participant2 : f.Participant1;
-      const p = f.Participant1IsHome ? pcts.part1 : pcts.part2;
-      const point: OddsPoint = { t: Date.now(), p };
       const match: Match = {
         id: String(f.FixtureId),
         home,
         away,
         homeCode: code(home),
         awayCode: code(away),
-        minute: 0,
-        scoreHome: 0,
-        scoreAway: 0,
-        current: p,
-        history: [point],
+        minute: pt.minute,
+        scoreHome: pt.scoreHome,
+        scoreAway: pt.scoreAway,
+        current: pt.p,
+        live: pt.live,
+        history: [{ t: Date.now(), p: pt.p }],
       };
       return match;
     }),
   );
 
-  return built.filter((m): m is Match => m !== null);
+  // live matches first, then by kickoff-ish (name) for stability
+  return built
+    .filter((m): m is Match => m !== null)
+    .sort((a, b) => Number(b.live) - Number(a.live));
 }
 
 // Cache fixture home/away orientation so per-tick polls don't refetch the list.
@@ -245,35 +269,77 @@ async function participant1IsHome(fixtureId: number): Promise<boolean> {
   return fixtureOrientation.get(fixtureId) ?? true;
 }
 
-/** Latest market win probability (+ best-effort scoreline) for one fixture. */
-export async function fetchMatchPoint(fixtureId: string): Promise<{
-  p: number;
+export type MatchPoint = {
+  p: number; // home win %
+  pDraw: number;
+  pAway: number;
   minute: number;
   scoreHome: number;
   scoreAway: number;
   messageId: string;
   ts: number;
-} | null> {
+  live: boolean;
+};
+
+// Last good reading per fixture. A partial TxLINE failure (odds OR scores) must
+// never regress the number to 0/flat — we hold the last known values instead.
+// This is what kills the "connecting/disconnecting" flap.
+const lastPoint = new Map<number, MatchPoint & { at: number }>();
+
+/** Latest market win probability + scoreline + live flag for one fixture. */
+export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | null> {
   const id = Number(fixtureId);
   const [odds, score, p1Home] = await Promise.all([
     fetchOddsFor(id),
     fetchScoreFor(id),
     participant1IsHome(id),
   ]);
+  const prev = lastPoint.get(id);
   const pcts = participantPcts(odds);
-  if (pcts == null) return null;
-  const pct = p1Home ? pcts.part1 : pcts.part2;
 
-  const secs = score?.Clock?.Seconds ?? 0;
-  const p1Goals = score?.Score?.Participant1?.Total?.Goals ?? 0;
-  const p2Goals = score?.Score?.Participant2?.Total?.Goals ?? 0;
-  const scoreP1IsHome = score?.Participant1IsHome ?? p1Home;
-  return {
-    p: pct,
-    minute: secs > 0 ? Math.min(120, Math.ceil(secs / 60)) : 0,
-    scoreHome: scoreP1IsHome ? p1Goals : p2Goals,
-    scoreAway: scoreP1IsHome ? p2Goals : p1Goals,
-    messageId: pcts.messageId,
-    ts: pcts.ts,
+  // --- odds: use fresh, else hold last good ---
+  let p: number, pDraw: number, pAway: number, messageId: string, ts: number;
+  if (pcts) {
+    p = p1Home ? pcts.part1 : pcts.part2;
+    pAway = p1Home ? pcts.part2 : pcts.part1;
+    pDraw = pcts.draw;
+    messageId = pcts.messageId;
+    ts = pcts.ts;
+  } else if (prev) {
+    p = prev.p;
+    pDraw = prev.pDraw;
+    pAway = prev.pAway;
+    messageId = prev.messageId;
+    ts = prev.ts;
+  } else {
+    return null; // never had a reading
+  }
+
+  // --- score/minute: use fresh, else hold; never run backwards ---
+  let minute = prev?.minute ?? 0;
+  let scoreHome = prev?.scoreHome ?? 0;
+  let scoreAway = prev?.scoreAway ?? 0;
+  let clockRunning = false;
+  if (score) {
+    const secs = score.Clock?.Seconds ?? 0;
+    clockRunning = Boolean(score.Clock?.Running);
+    const sHome = score.Participant1IsHome ?? p1Home;
+    const p1Goals = score.Score?.Participant1?.Total?.Goals ?? 0;
+    const p2Goals = score.Score?.Participant2?.Total?.Goals ?? 0;
+    const freshMin = secs > 0 ? Math.min(120, Math.ceil(secs / 60)) : 0;
+    if (freshMin > 0) minute = Math.max(minute, freshMin);
+    // goals only ever climb within a match
+    scoreHome = Math.max(scoreHome, sHome ? p1Goals : p2Goals);
+    scoreAway = Math.max(scoreAway, sHome ? p2Goals : p1Goals);
+  }
+
+  // --- live: the odds market is in-running, or the clock is running ---
+  const oddsLive = odds.some((o) => o.InRunning === true);
+  const live = oddsLive || (clockRunning && minute > 0);
+
+  const point: MatchPoint = {
+    p, pDraw, pAway, minute, scoreHome, scoreAway, messageId, ts, live,
   };
+  lastPoint.set(id, { ...point, at: Date.now() });
+  return point;
 }

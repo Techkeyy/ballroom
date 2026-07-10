@@ -4,7 +4,11 @@
  * score you against the real humans at your table (see lib/league-server.ts).
  */
 
-export const PREDICT_WINDOW_MS = 45_000; // the round clock
+// The round clock. 45s barely lets the market move; ~90s gives real movement
+// while still resolving fast enough to stay punchy. Tunable via env for
+// demo (shorter) vs live play (longer). See ROADMAP for per-round-type windows.
+export const PREDICT_WINDOW_MS =
+  Number(process.env.NEXT_PUBLIC_ROUND_SECONDS ?? 90) * 1000;
 
 /** A round score at/above this is "sharp" — keeps a solo streak alive. */
 export const SHARP_BAR = 50;

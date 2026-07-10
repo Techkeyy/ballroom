@@ -4,6 +4,8 @@
  * The play control: set your call, lock it, sweat the countdown.
  */
 
+import { PREDICT_WINDOW_MS } from "@/lib/game";
+
 export default function PredictionPad({
   current,
   guess,
@@ -12,6 +14,7 @@ export default function PredictionPad({
   msLeft,
   onLock,
   disabled,
+  homeCode,
 }: {
   current: number;
   guess: number;
@@ -20,8 +23,10 @@ export default function PredictionPad({
   msLeft: number;
   onLock: () => void;
   disabled?: boolean;
+  homeCode?: string;
 }) {
   const secs = Math.ceil(msLeft / 1000);
+  const windowSecs = Math.round(PREDICT_WINDOW_MS / 1000);
   const delta = Math.round((guess - current) * 10) / 10;
 
   if (locked) {
@@ -36,7 +41,7 @@ export default function PredictionPad({
           <div
             className="h-full bg-gold transition-[width] duration-1000 ease-linear"
             style={{
-              width: `${Math.max(0, Math.min(100, (msLeft / 45000) * 100))}%`,
+              width: `${Math.max(0, Math.min(100, (msLeft / PREDICT_WINDOW_MS) * 100))}%`,
             }}
           />
         </div>
@@ -50,7 +55,9 @@ export default function PredictionPad({
   return (
     <div className="panel-strong p-6">
       <div className="mb-4 flex items-baseline justify-between">
-        <p className="eyebrow">The market in 45s</p>
+        <p className="eyebrow">
+          {homeCode ? `${homeCode} win % in ${windowSecs}s` : `The market in ${windowSecs}s`}
+        </p>
         <p className="tabular font-mono text-[11px] tracking-[0.12em] text-ivory-faint">
           now {current}
         </p>
