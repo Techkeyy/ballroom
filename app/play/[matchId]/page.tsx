@@ -7,6 +7,7 @@ import Heartbeat from "@/components/Heartbeat";
 import PredictionPad from "@/components/PredictionPad";
 import Leaderboard from "@/components/Leaderboard";
 import ShareCard from "@/components/ShareCard";
+import TableFeed from "@/components/TableFeed";
 import { useSyncRound } from "@/components/useSyncRound";
 import { getMatch, subscribeToMatch, legValueOf, dataSource, type Match, type Leg } from "@/lib/txline";
 import { PREDICT_WINDOW_MS, scoreGuess, SHARP_BAR, nextStreak, verdict } from "@/lib/game";
@@ -498,6 +499,13 @@ export default function MatchPage() {
             highlightDelta={uiPhase === "resolved" ? uiResult?.points : undefined}
             refreshKey={uiPhase === "resolved" ? 1 : 0}
           />
+
+          {leagueMode && state.leagueCode && (
+            <TableFeed
+              code={state.leagueCode}
+              player={{ address: state.player.address, name: state.player.name }}
+            />
+          )}
         </div>
       </div>
     </main>

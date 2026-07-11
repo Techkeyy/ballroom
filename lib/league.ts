@@ -2,8 +2,13 @@
  * Client-side league API — thin fetch wrappers over app/api/league/*.
  */
 
-import type { League, LeagueRound, Leg } from "./league-server";
-export type { League, LeagueMember, LeagueRound, RoundResult, Leg } from "./league-server";
+import type { League, LeagueRound, Leg, FeedItem } from "./league-server";
+export type { League, LeagueMember, LeagueRound, RoundResult, Leg, FeedItem } from "./league-server";
+
+// Client-side copy of the allowed reactions (kept in sync with the server's
+// FEED_EMOJI, which validates them). Defined here so importing it doesn't pull
+// the server-only league-server module into the client bundle.
+export const FEED_EMOJI = ["🔥", "🎯", "😂", "😱", "👏", "💀"] as const;
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -109,6 +114,51 @@ export async function lockGuess(
       },
     );
     return round;
+  } catch {
+    return null;
+  }
+}
+
+// ---- table feed -------------------------------------------------------------
+
+export async function fetchFeed(code: string): Promise<FeedItem[]> {
+  try {
+    const { items } = await req<{ items: FeedItem[] }>(`/api/league/${code}/feed`);
+    return items;
+  } catch {
+    return [];
+  }
+}
+
+export async function postChat(
+  code: string,
+  address: string,
+  name: string,
+  text: string,
+): Promise<FeedItem[] | null> {
+  try {
+    const { items } = await req<{ items: FeedItem[] }>(`/api/league/${code}/feed`, {
+      method: "POST",
+      body: JSON.stringify({ kind: "chat", address, name, text }),
+    });
+    return items;
+  } catch {
+    return null;
+  }
+}
+
+export async function postReact(
+  code: string,
+  address: string,
+  name: string,
+  emoji: string,
+): Promise<FeedItem[] | null> {
+  try {
+    const { items } = await req<{ items: FeedItem[] }>(`/api/league/${code}/feed`, {
+      method: "POST",
+      body: JSON.stringify({ kind: "react", address, name, emoji }),
+    });
+    return items;
   } catch {
     return null;
   }

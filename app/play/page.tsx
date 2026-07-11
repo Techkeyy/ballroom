@@ -7,6 +7,7 @@ import { getLiveMatches, dataSource, type Match } from "@/lib/txline";
 import { load, type Persisted } from "@/lib/store";
 import { leagueLink } from "@/lib/league";
 import Leaderboard from "@/components/Leaderboard";
+import TableFeed from "@/components/TableFeed";
 
 export default function PlayPage() {
   const router = useRouter();
@@ -82,15 +83,23 @@ export default function PlayPage() {
               {copied ? "LINK COPIED" : `INVITE · ${state.leagueCode}`}
             </button>
           </div>
-          <Leaderboard
-            player={{
-              address: state.player?.address,
-              name: state.player?.name ?? "",
-              points: state.player?.points ?? 0,
-            }}
-            leagueCode={state.leagueCode}
-            leagueName={state.league}
-          />
+          <div className="grid gap-3 md:grid-cols-2 md:items-start">
+            <Leaderboard
+              player={{
+                address: state.player?.address,
+                name: state.player?.name ?? "",
+                points: state.player?.points ?? 0,
+              }}
+              leagueCode={state.leagueCode}
+              leagueName={state.league}
+            />
+            {state.player && (
+              <TableFeed
+                code={state.leagueCode}
+                player={{ address: state.player.address, name: state.player.name }}
+              />
+            )}
+          </div>
         </div>
       )}
 

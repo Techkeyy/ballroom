@@ -74,6 +74,24 @@ export type LeagueRound = {
   marketTs?: number;
 };
 
+/**
+ * The table feed — a lightweight, mostly game-aware banter stream per league.
+ * `event` items are auto-generated at server-authoritative moments (someone
+ * opens/joins a table, locks a call, wins a round); `chat`/`react` come from
+ * seated players. Deliberately NOT a general chat — it keeps the room alive
+ * around the game itself.
+ */
+export type FeedItem = {
+  id: string;
+  at: number;
+  kind: "event" | "chat" | "react";
+  name?: string;
+  text?: string;
+  emoji?: string;
+};
+
+export const FEED_EMOJI = ["🔥", "🎯", "😂", "😱", "👏", "💀"] as const;
+
 const KV_URL = process.env.KV_REST_API_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN;
 const HAS_KV = Boolean(KV_URL && KV_TOKEN);
@@ -85,9 +103,11 @@ const HAS_KV = Boolean(KV_URL && KV_TOKEN);
 const g = globalThis as unknown as {
   __ballroomLeagues?: Map<string, League>;
   __ballroomRounds?: Map<string, LeagueRound>;
+  __ballroomFeed?: Map<string, FeedItem[]>;
 };
 const localStore = (g.__ballroomLeagues ??= new Map<string, League>());
 const roundStore = (g.__ballroomRounds ??= new Map<string, LeagueRound>());
+const feedStore = (g.__ballroomFeed ??= new Map<string, FeedItem[]>());
 
 async function kvGet(code: string): Promise<League | null> {
   const { kv } = await import("@vercel/kv");
@@ -126,6 +146,46 @@ async function putRound(key: string, round: LeagueRound): Promise<void> {
   } else {
     roundStore.set(key, round);
   }
+}
+
+async function getFeedRaw(code: string): Promise<FeedItem[]> {
+  const c = code.toUpperCase();
+  if (HAS_KV) {
+    const { kv } = await import("@vercel/kv");
+    return (await kv.get<FeedItem[]>(`feed:${c}`)) ?? [];
+  }
+  return feedStore.get(c) ?? [];
+}
+
+async function putFeed(code: string, items: FeedItem[]): Promise<void> {
+  const c = code.toUpperCase();
+  if (HAS_KV) {
+    const { kv } = await import("@vercel/kv");
+    await kv.set(`feed:${c}`, items, { ex: 24 * 60 * 60 });
+  } else {
+    feedStore.set(c, items);
+  }
+}
+
+/** Read the table feed (oldest first). */
+export async function getFeed(code: string): Promise<FeedItem[]> {
+  return getFeedRaw(code);
+}
+
+/** Append one item, keeping only the most recent 40. */
+export async function postToFeed(
+  code: string,
+  item: Omit<FeedItem, "id" | "at">,
+): Promise<FeedItem[]> {
+  const items = await getFeedRaw(code);
+  items.push({
+    ...item,
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    at: Date.now(),
+  });
+  const capped = items.slice(-40);
+  await putFeed(code, capped);
+  return capped;
 }
 
 export const storageMode = HAS_KV ? "kv" : "memory";
@@ -167,6 +227,10 @@ export async function createLeague(
     },
   };
   await putLeague(league);
+  await postToFeed(code, {
+    kind: "event",
+    text: `${league.members[creator.address].name} opened the table`,
+  });
   return league;
 }
 
@@ -180,8 +244,9 @@ export async function joinLeague(
     if (Object.keys(league.members).length >= 24) {
       throw new Error("This table is full (24 seats).");
     }
+    const seatName = member.name.slice(0, 24);
     league.members[member.address] = {
-      name: member.name.slice(0, 24),
+      name: seatName,
       points: 0,
       streak: 0,
       bestStreak: 0,
@@ -189,6 +254,7 @@ export async function joinLeague(
       lastSeen: Date.now(),
     };
     await putLeague(league);
+    await postToFeed(code, { kind: "event", text: `${seatName} took a seat` });
   }
   return league;
 }
@@ -276,6 +342,20 @@ async function resolveRound(code: string, round: LeagueRound): Promise<LeagueRou
       m.lastSeen = Date.now();
     }
     await putLeague(league);
+
+    // banter: announce the round winner (or the streak they're on)
+    if (ranked.length) {
+      const top = ranked[0];
+      const streak = league.members[top.addr]?.streak ?? 0;
+      const text =
+        ranked.length > 1
+          ? `${top.name} called it closest (+${top.points})`
+          : `${top.name} scored +${top.points}`;
+      await postToFeed(code, {
+        kind: "event",
+        text: streak >= 3 ? `${text} · ${streak}🔥 streak` : text,
+      });
+    }
   }
 
   return round;
@@ -347,11 +427,17 @@ export async function lockRoundGuess(
   const round = await getRoundRaw(key);
   if (!round || round.id !== roundId) return round ?? null;
   if (round.resolved || Date.now() >= round.deadline) return round; // too late
+  const seatName = name.slice(0, 24);
+  const isNew = !round.guesses[address];
   round.guesses[address] = {
-    name: name.slice(0, 24),
+    name: seatName,
     guess: Math.max(2, Math.min(98, Math.round(guess * 10) / 10)),
     at: Date.now(),
   };
   await putRound(key, round);
+  // only announce the first lock of the round for a player (not slider fiddling)
+  if (isNew) {
+    await postToFeed(code, { kind: "event", text: `${seatName} is in for this round` });
+  }
   return round;
 }
