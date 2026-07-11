@@ -52,8 +52,11 @@ export function save(state: Persisted): void {
 export function signIn(name: string, address?: string): Persisted {
   const state = load();
   state.player = {
+    // "You" collided with the "— you" self-marker in the leaderboard, so the
+    // host looked like the viewer. Names are required in the UI now; this is a
+    // last-ditch fallback only.
     address: address ?? fakeAddress(),
-    name: name.trim() || "You",
+    name: name.trim() || "Guest",
     points: 0,
     streak: 0,
     bestStreak: 0,

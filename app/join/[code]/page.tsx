@@ -69,9 +69,19 @@ export default function JoinPage() {
             {Object.keys(league.members).length === 1 ? "SEAT" : "SEATS"} TAKEN
           </p>
         )}
-        {league && Object.keys(league.members).length > 0 && (
-          <p className="mt-2 text-[13px] text-ivory-dim">
-            Already seated: {Object.values(league.members).map((m) => m.name).join(", ")}
+        {league?.host && league.members[league.host] && (
+          <p className="mt-3 text-[14px] text-ivory-dim">
+            <span className="text-gold">{league.members[league.host].name}</span>{" "}
+            invited you to their table.
+          </p>
+        )}
+        {league && Object.keys(league.members).length > 1 && (
+          <p className="mt-1 text-[13px] text-ivory-faint">
+            Also seated:{" "}
+            {Object.entries(league.members)
+              .filter(([addr]) => addr !== league.host)
+              .map(([, m]) => m.name)
+              .join(", ")}
           </p>
         )}
       </header>

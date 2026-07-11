@@ -9,6 +9,7 @@ export type Row = {
   points: number;
   streak?: number;
   you?: boolean;
+  host?: boolean;
 };
 
 /**
@@ -57,6 +58,7 @@ export default function Leaderboard({
       points: m.points,
       streak: m.streak,
       you: addr === player.address,
+      host: addr === league.host,
     }));
     title = league.name;
     const n = rows.length;
@@ -103,6 +105,11 @@ export default function Leaderboard({
                 {r.name}
                 {r.you ? " — you" : ""}
               </span>
+              {r.host ? (
+                <span className="rounded-sm border border-gold/30 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.14em] text-gold/80">
+                  Host
+                </span>
+              ) : null}
               {r.streak && r.streak > 1 ? (
                 <span className="font-mono text-[9px] tracking-[0.1em] text-ivory-faint">
                   {r.streak}★

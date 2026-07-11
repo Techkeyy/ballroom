@@ -28,6 +28,8 @@ export type League = {
   code: string;
   name: string;
   createdAt: number;
+  /** address of whoever created the table (they sent you the code) */
+  host: string;
   members: Record<string, LeagueMember>;
 };
 
@@ -152,6 +154,7 @@ export async function createLeague(
     code,
     name: name.trim().slice(0, 32) || "The Table",
     createdAt: Date.now(),
+    host: creator.address,
     members: {
       [creator.address]: {
         name: creator.name.slice(0, 24),

@@ -34,8 +34,14 @@ export default function WalletButton({
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
 
+  const nameOk = name.trim().length >= 2;
+
   async function connectWallet() {
     setError(null);
+    if (!nameOk) {
+      setError("Pick a name your table will recognise first.");
+      return;
+    }
     const available = wallets.filter((w) => w.readyState === "Installed");
     const choice =
       available.find((w) => w.adapter.name === "Phantom") ?? available[0];
@@ -92,7 +98,7 @@ export default function WalletButton({
       <button
         type="button"
         onClick={connectWallet}
-        disabled={busy || connecting}
+        disabled={busy || connecting || !nameOk}
         className="btn btn-primary w-full py-4 disabled:opacity-50"
       >
         {busy || connecting ? "Connecting" : ctaLabel}
@@ -106,8 +112,9 @@ export default function WalletButton({
 
       <button
         type="button"
-        onClick={() => onSignIn(name)}
-        className="btn btn-ghost w-full py-3"
+        onClick={() => nameOk && onSignIn(name.trim())}
+        disabled={!nameOk}
+        className="btn btn-ghost w-full py-3 disabled:opacity-40"
       >
         Continue as guest
       </button>
