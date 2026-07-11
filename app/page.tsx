@@ -13,6 +13,7 @@ export default function Home() {
   const [leagueCode, setLeagueCode] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [codeInput, setCodeInput] = useState("");
 
   useEffect(() => {
     const s = load();
@@ -44,6 +45,15 @@ export default function Home() {
     navigator.clipboard?.writeText(leagueLink(leagueCode));
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
+  }
+
+  function joinByCode(e: React.FormEvent) {
+    e.preventDefault();
+    const code = codeInput.trim().toUpperCase();
+    if (!code) return;
+    // /join/[code] handles the rest: lookup, identity, seating — same as a
+    // shared link, just typed in instead of tapped.
+    router.push(`/join/${code}`);
   }
 
   return (
@@ -155,6 +165,29 @@ export default function Home() {
                   <WalletButton onSignIn={handleSignIn} />
                 </div>
               )}
+
+              {/* someone told you the code instead of sending a link */}
+              <div className="mt-6 border-t border-white/[0.08] pt-5">
+                <p className="eyebrow mb-2">Have a table code?</p>
+                <form onSubmit={joinByCode} className="flex gap-2">
+                  <input
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                    placeholder="XYZ12"
+                    maxLength={8}
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    className="tabular w-0 flex-1 rounded-md border border-white/[0.12] bg-ink-950/60 px-3 py-2.5 text-sm uppercase tracking-[0.1em] text-ivory placeholder-ivory-faint outline-none transition-colors focus:border-gold/50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!codeInput.trim()}
+                    className="btn btn-ghost px-4 disabled:opacity-40"
+                  >
+                    Join
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </div>

@@ -41,12 +41,22 @@ export type League = {
 export type RoundGuess = { name: string; guess: number; at: number };
 export type RoundResult = { name: string; guess: number; points: number; rank: number };
 
+/** Which leg of the 3-way match-result market the round is calling. */
+export type Leg = "home" | "draw" | "away";
+
+function legValue(m: { p: number; pDraw: number; pAway: number }, leg: Leg): number {
+  if (leg === "draw") return m.pDraw;
+  if (leg === "away") return m.pAway;
+  return m.p;
+}
+
 export type LeagueRound = {
   id: string;
   matchId: string;
   home: string;
   away: string;
   homeCode: string;
+  leg: Leg;
   startProb: number;
   openedAt: number;
   deadline: number;
@@ -221,7 +231,7 @@ async function resolveRound(code: string, round: LeagueRound): Promise<LeagueRou
   if (round.resolved) return round;
 
   const market = await readMarket(round.matchId);
-  const actual = market ? market.p : round.startProb; // degrade to flat if unread
+  const actual = market ? legValue(market, round.leg) : round.startProb; // degrade to flat if unread
   round.actual = actual;
   if (market) {
     round.minute = market.minute;
@@ -277,7 +287,7 @@ export async function getOrOpenRound(
   code: string,
   matchId: string,
   meta: { home: string; away: string; homeCode: string },
-  opts: { open?: boolean } = {},
+  opts: { open?: boolean; leg?: Leg } = {},
 ): Promise<LeagueRound | null> {
   const key = roundKey(code, matchId);
   const now = Date.now();
@@ -288,7 +298,9 @@ export async function getOrOpenRound(
     await putRound(key, round);
     return round;
   }
-  if (round && !round.resolved) return round; // live, accepting guesses
+  // A round already live is locked to whichever leg it opened with — the
+  // requested leg only takes effect on the NEXT round.
+  if (round && !round.resolved) return round;
   if (round && round.resolved && now - round.deadline < REVEAL_MS && !opts.open) {
     return round; // still revealing results
   }
@@ -296,13 +308,15 @@ export async function getOrOpenRound(
   // open a fresh round — needs a live market read for startProb
   const market = await readMarket(matchId);
   if (!market) return round ?? null; // can't open without the market
+  const leg: Leg = opts.leg ?? "home";
   const fresh: LeagueRound = {
     id: `${matchId}-${now}`,
     matchId,
     home: meta.home,
     away: meta.away,
     homeCode: meta.homeCode,
-    startProb: market.p,
+    leg,
+    startProb: legValue(market, leg),
     openedAt: now,
     deadline: now + PREDICT_WINDOW_MS,
     resolved: false,

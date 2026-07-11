@@ -5,7 +5,7 @@
  * Player's locked call is a dotted ivory target line.
  */
 
-import { OddsPoint } from "@/lib/txline";
+import { legValue, type Leg, type OddsPoint } from "@/lib/txline";
 
 const W = 340;
 const H = 150;
@@ -15,12 +15,15 @@ export default function Heartbeat({
   history,
   guess,
   others = [],
+  leg = "home",
   windowMax = 60,
 }: {
   history: OddsPoint[];
   guess: number | null;
   /** other players' locked calls, revealed at resolve */
   others?: number[];
+  /** which market leg's line to trace — home/draw/away */
+  leg?: Leg;
   windowMax?: number;
 }) {
   const pts = history.slice(-windowMax);
@@ -32,7 +35,8 @@ export default function Heartbeat({
     );
   }
 
-  const values = pts.map((p) => p.p);
+  const val = (p: OddsPoint) => legValue(p, leg);
+  const values = pts.map(val);
   const min = Math.max(0, Math.min(...values, guess ?? 100) - 6);
   const max = Math.min(100, Math.max(...values, guess ?? 0) + 6);
   const span = Math.max(6, max - min);
@@ -41,13 +45,13 @@ export default function Heartbeat({
   const y = (v: number) => PAD + (1 - (v - min) / span) * (H - PAD * 2);
 
   const line = pts
-    .map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.p).toFixed(1)}`)
+    .map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(val(p)).toFixed(1)}`)
     .join(" ");
   const area = `${line} L${x(pts.length - 1).toFixed(1)},${H - PAD} L${x(0).toFixed(1)},${H - PAD} Z`;
 
   const last = pts[pts.length - 1];
   const lastX = x(pts.length - 1);
-  const lastY = y(last.p);
+  const lastY = y(val(last));
   const guessY = guess != null ? y(guess) : null;
 
   return (

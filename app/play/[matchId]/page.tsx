@@ -8,12 +8,25 @@ import PredictionPad from "@/components/PredictionPad";
 import Leaderboard from "@/components/Leaderboard";
 import ShareCard from "@/components/ShareCard";
 import { useSyncRound } from "@/components/useSyncRound";
-import { getMatch, subscribeToMatch, dataSource, type Match } from "@/lib/txline";
+import { getMatch, subscribeToMatch, legValueOf, dataSource, type Match, type Leg } from "@/lib/txline";
 import { PREDICT_WINDOW_MS, scoreGuess, SHARP_BAR, nextStreak, verdict } from "@/lib/game";
 import { load, save, type Persisted } from "@/lib/store";
 
 type Phase = "idle" | "locked" | "resolved";
-type Result = { startProb: number; guess: number; actual: number; points: number; streak: number };
+type Result = {
+  startProb: number;
+  guess: number;
+  actual: number;
+  points: number;
+  streak: number;
+  leg: Leg;
+};
+
+function legName(leg: Leg, homeCode: string, awayCode: string): string {
+  if (leg === "draw") return "DRAW";
+  if (leg === "away") return awayCode;
+  return homeCode;
+}
 
 export default function MatchPage() {
   const router = useRouter();
@@ -29,9 +42,10 @@ export default function MatchPage() {
   const [msLeft, setMsLeft] = useState(PREDICT_WINDOW_MS);
   const [result, setResult] = useState<Result | null>(null);
   const [gained, setGained] = useState(0);
+  const [soloLeg, setSoloLeg] = useState<Leg>("home");
 
   const matchRef = useRef<Match | null>(null);
-  const lockRef = useRef<{ startProb: number; guess: number } | null>(null);
+  const lockRef = useRef<{ startProb: number; guess: number; leg: Leg } | null>(null);
   const receiptDone = useRef<string | null>(null);
 
   // always-fresh state for callbacks that fire outside render (timers)
@@ -132,7 +146,7 @@ export default function MatchPage() {
     const prev = stateRef.current;
     if (!locked || !m || !prev?.player) return;
 
-    const actual = Math.round(m.current * 10) / 10;
+    const actual = Math.round(legValueOf(m, locked.leg) * 10) / 10;
     const points = scoreGuess(locked.guess, actual);
     const kept = points >= SHARP_BAR;
     const streak = nextStreak(prev.player.streak, kept);
@@ -148,7 +162,14 @@ export default function MatchPage() {
     save(next);
     setState(next);
     setGained(points);
-    setResult({ startProb: locked.startProb, guess: locked.guess, actual, points, streak });
+    setResult({
+      startProb: locked.startProb,
+      guess: locked.guess,
+      actual,
+      points,
+      streak,
+      leg: locked.leg,
+    });
     setPhase("resolved");
     lockRef.current = null;
 
@@ -185,14 +206,18 @@ export default function MatchPage() {
 
   function lockSolo() {
     if (!match) return;
-    lockRef.current = { startProb: Math.round(match.current * 10) / 10, guess };
+    lockRef.current = {
+      startProb: Math.round(legValueOf(match, soloLeg) * 10) / 10,
+      guess,
+      leg: soloLeg,
+    };
     setPhase("locked");
   }
   function playAgainSolo() {
     setResult(null);
     setGained(0);
     setReceiptId(null);
-    if (match) setGuess(Math.round(match.current));
+    if (match) setGuess(Math.round(legValueOf(match, soloLeg)));
     setPhase("idle");
   }
 
@@ -241,6 +266,7 @@ export default function MatchPage() {
 
   // ---- live status ---------------------------------------------------------
   const isLive = dataSource === "simulator" ? true : Boolean(match.live);
+  const marketOpen = dataSource === "simulator" ? true : match.oddsAvailable !== false;
   const statusLabel =
     dataSource === "simulator"
       ? "SIM"
@@ -258,7 +284,18 @@ export default function MatchPage() {
   const uiSetGuess = leagueMode ? sync.setGuess : setGuess;
   const uiMsLeft = leagueMode ? sync.msLeft : msLeft;
   const uiLock = leagueMode ? sync.lock : lockSolo;
-  const uiStart = leagueMode ? sync.round?.startProb ?? match.current : match.current;
+
+  // A live round (league) is locked to whichever leg it opened with — that
+  // always wins over the "next round" pick. Solo has no such lock; the
+  // freely-clicked leg drives everything directly.
+  const activeLeg: Leg = leagueMode ? sync.round?.leg ?? sync.nextLeg : soloLeg;
+  const activeLegValue = legValueOf(match, activeLeg);
+  const activeLegLabel = legName(activeLeg, match.homeCode, match.awayCode);
+  const pendingLegChange =
+    leagueMode && Boolean(sync.round) && sync.nextLeg !== (sync.round?.leg ?? sync.nextLeg);
+  const legsClickable = !(uiPhase === "locked" && !leagueMode);
+
+  const uiStart = leagueMode ? (sync.round?.startProb ?? activeLegValue) : activeLegValue;
 
   const uiResult: Result | null = leagueMode
     ? sync.myResult && sync.round?.actual != null
@@ -268,6 +305,7 @@ export default function MatchPage() {
           actual: sync.round.actual,
           points: sync.myResult.points,
           streak: sync.myStreak ?? 0,
+          leg: sync.round.leg,
         }
       : null
     : result;
@@ -281,6 +319,12 @@ export default function MatchPage() {
 
   const othersReveal =
     leagueMode && uiPhase === "resolved" ? sync.otherGuesses : [];
+
+  function selectLeg(leg: Leg) {
+    if (!legsClickable) return;
+    if (leagueMode) sync.setNextLeg(leg);
+    else setSoloLeg(leg);
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-8 md:px-10">
@@ -317,31 +361,90 @@ export default function MatchPage() {
               <span className="italic font-normal text-ivory-faint">v</span>{" "}
               {match.away}
             </p>
-            <p className="eyebrow mt-2">{match.home} win probability</p>
-            <p className="tabular mt-3 font-num text-[76px] font-light leading-none text-gold md:text-[88px]">
-              {Math.round(match.current)}
-              <span className="text-3xl text-ivory-faint">%</span>
-            </p>
+            {marketOpen ? (
+              <>
+                <p className="eyebrow mt-2">
+                  {activeLegLabel === "DRAW" ? "Draw" : `${activeLegLabel} win`} probability
+                </p>
+                <p className="tabular mt-3 font-num text-[76px] font-light leading-none text-gold md:text-[88px]">
+                  {Math.round(activeLegValue)}
+                  <span className="text-3xl text-ivory-faint">%</span>
+                </p>
 
-            {/* full 3-way market, so it reads as a match — not one country */}
-            {match.awayPct != null && match.drawPct != null && (
-              <div className="mt-4 flex items-stretch gap-1.5 md:max-w-[340px]">
-                <MarketLeg code={match.homeCode} pct={match.current} you />
-                <MarketLeg code="DRAW" pct={match.drawPct} />
-                <MarketLeg code={match.awayCode} pct={match.awayPct} />
+                {/* full 3-way market — tap one to call it */}
+                {match.awayPct != null && match.drawPct != null && (
+                  <>
+                    <div className="mt-4 flex items-stretch gap-1.5 md:max-w-[340px]">
+                      <MarketLeg
+                        code={match.homeCode}
+                        pct={match.current}
+                        you={activeLeg === "home"}
+                        onClick={legsClickable ? () => selectLeg("home") : undefined}
+                      />
+                      <MarketLeg
+                        code="DRAW"
+                        pct={match.drawPct}
+                        you={activeLeg === "draw"}
+                        onClick={legsClickable ? () => selectLeg("draw") : undefined}
+                      />
+                      <MarketLeg
+                        code={match.awayCode}
+                        pct={match.awayPct}
+                        you={activeLeg === "away"}
+                        onClick={legsClickable ? () => selectLeg("away") : undefined}
+                      />
+                    </div>
+                    {pendingLegChange && (
+                      <p className="eyebrow mt-2 !text-[10px]">
+                        Next round calls{" "}
+                        {legName(sync.nextLeg, match.homeCode, match.awayCode)}
+                      </p>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <div className="mt-2">
+                <p className="eyebrow">
+                  {match.kickoff
+                    ? `Kicks off ${new Intl.DateTimeFormat(undefined, {
+                        weekday: "short",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      }).format(new Date(match.kickoff))}`
+                    : "Not yet open"}
+                </p>
+                <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-ivory-dim">
+                  TxLINE hasn&apos;t posted a market for this fixture yet — the
+                  table opens closer to kickoff. Check back soon.
+                </p>
               </div>
             )}
           </div>
 
           {/* the thread */}
-          <div className="panel p-3">
-            <Heartbeat history={match.history} guess={lockedGuess} others={othersReveal} />
-          </div>
+          {marketOpen && (
+            <div className="panel p-3">
+              <Heartbeat
+                history={match.history}
+                guess={lockedGuess}
+                others={othersReveal}
+                leg={activeLeg}
+              />
+            </div>
+          )}
         </div>
 
         {/* RIGHT: play + table */}
         <div className="space-y-6">
-          {uiPhase === "resolved" && uiResult ? (
+          {!marketOpen ? (
+            <div className="panel-strong p-6 text-center">
+              <p className="font-display text-lg italic text-ivory-dim">
+                The table isn&apos;t set yet.
+              </p>
+              <p className="eyebrow mt-2">Odds open closer to kickoff</p>
+            </div>
+          ) : uiPhase === "resolved" && uiResult ? (
             <ShareCard
               match={match}
               startProb={uiResult.startProb}
@@ -351,6 +454,7 @@ export default function MatchPage() {
               streak={uiResult.streak}
               rank={leagueMode ? sync.myResult?.rank : undefined}
               field={leagueMode ? sync.seated : undefined}
+              legLabel={legName(uiResult.leg, match.homeCode, match.awayCode)}
               playerName={state.player.name}
               receiptId={receiptId}
               onPlayAgain={leagueMode ? sync.playAgain : playAgainSolo}
@@ -371,7 +475,7 @@ export default function MatchPage() {
                 locked={uiPhase === "locked"}
                 msLeft={uiMsLeft}
                 onLock={uiLock}
-                homeCode={match.homeCode}
+                legLabel={activeLegLabel}
               />
               {leagueMode && (
                 <p className="eyebrow mt-3 text-center">
@@ -400,21 +504,26 @@ export default function MatchPage() {
   );
 }
 
-/** One outcome of the 3-way match market. The one you call is gold. */
+/** One outcome of the 3-way match market. Tap to call it — the one you're calling is gold. */
 function MarketLeg({
   code,
   pct,
   you,
+  onClick,
 }: {
   code: string;
   pct: number;
   you?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div
-      className={`flex-1 rounded-md border px-2 py-2 text-center ${
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className={`flex-1 rounded-md border px-2 py-2 text-center transition-colors ${
         you ? "border-gold/40 bg-gold/[0.06]" : "border-white/[0.08]"
-      }`}
+      } ${onClick ? "cursor-pointer hover:border-gold/30" : "cursor-default opacity-70"}`}
     >
       <p className={`eyebrow !text-[9px] ${you ? "!text-gold" : ""}`}>{code}</p>
       <p
@@ -424,6 +533,6 @@ function MarketLeg({
       >
         {Math.round(pct)}
       </p>
-    </div>
+    </button>
   );
 }

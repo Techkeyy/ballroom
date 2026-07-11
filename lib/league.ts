@@ -2,8 +2,8 @@
  * Client-side league API — thin fetch wrappers over app/api/league/*.
  */
 
-import type { League, LeagueRound } from "./league-server";
-export type { League, LeagueMember, LeagueRound, RoundResult } from "./league-server";
+import type { League, LeagueRound, Leg } from "./league-server";
+export type { League, LeagueMember, LeagueRound, RoundResult, Leg } from "./league-server";
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -51,16 +51,21 @@ export async function fetchLeague(code: string): Promise<League | null> {
 
 type MatchMeta = { home: string; away: string; homeCode: string };
 
-/** Open (or fetch) the current synchronized round for a match. */
+/**
+ * Open (or fetch) the current synchronized round for a match. `leg` is only
+ * honored when a fresh round is actually being opened — a round already live
+ * keeps whichever leg it started with.
+ */
 export async function openRound(
   code: string,
   matchId: string,
   meta: MatchMeta,
+  leg?: Leg,
 ): Promise<LeagueRound | null> {
   try {
     const { round } = await req<{ round: LeagueRound | null }>(
       `/api/league/${code}/round`,
-      { method: "POST", body: JSON.stringify({ matchId, ...meta, open: true }) },
+      { method: "POST", body: JSON.stringify({ matchId, ...meta, open: true, leg }) },
     );
     return round;
   } catch {
@@ -73,8 +78,9 @@ export async function fetchRound(
   code: string,
   matchId: string,
   meta: MatchMeta,
+  leg?: Leg,
 ): Promise<LeagueRound | null> {
-  const q = new URLSearchParams({ matchId, ...meta }).toString();
+  const q = new URLSearchParams({ matchId, ...meta, ...(leg ? { leg } : {}) }).toString();
   try {
     const { round } = await req<{ round: LeagueRound | null }>(
       `/api/league/${code}/round?${q}`,

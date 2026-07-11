@@ -19,12 +19,17 @@ import { useWallet } from "@solana/wallet-adapter-react";
 
 export default function WalletButton({
   onSignIn,
+  defaultName = "",
+  ctaLabel = "Sign in with Solana",
 }: {
   onSignIn: (name: string, address?: string) => void;
+  /** Pre-fill the name field (e.g. this device's existing player name). */
+  defaultName?: string;
+  ctaLabel?: string;
 }) {
   const { wallets, select, connect, connected, connecting, publicKey, signMessage } =
     useWallet();
-  const [name, setName] = useState("");
+  const [name, setName] = useState(defaultName);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
@@ -90,7 +95,7 @@ export default function WalletButton({
         disabled={busy || connecting}
         className="btn btn-primary w-full py-4 disabled:opacity-50"
       >
-        {busy || connecting ? "Connecting" : "Sign in with Solana"}
+        {busy || connecting ? "Connecting" : ctaLabel}
       </button>
 
       {error && (

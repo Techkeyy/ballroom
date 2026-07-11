@@ -17,7 +17,17 @@
 export type OddsPoint = {
   t: number; // epoch ms
   p: number; // home win probability, 0..100
+  pDraw?: number;
+  pAway?: number;
 };
+
+export type Leg = "home" | "draw" | "away";
+
+export function legValue(pt: { p: number; pDraw?: number; pAway?: number }, leg: Leg): number {
+  if (leg === "draw") return pt.pDraw ?? 0;
+  if (leg === "away") return pt.pAway ?? 0;
+  return pt.p;
+}
 
 export type Match = {
   id: string;
@@ -31,6 +41,12 @@ export type Match = {
   current: number; // current home win probability, 0..100
   drawPct?: number;
   awayPct?: number;
+  /** Kickoff time, epoch ms — set for every fixture, used to show "kicks off HH:MM" pre-match. */
+  kickoff?: number;
+  /** False when TxLINE hasn't published a market for this fixture yet (common
+   * many hours before kickoff). The fixture still shows — with a "not open
+   * yet" state instead of a real number. Undefined/true = normal. */
+  oddsAvailable?: boolean;
   history: OddsPoint[];
   /** True only when the fixture is actually in-play (in-running odds / clock). */
   live?: boolean;
@@ -39,6 +55,13 @@ export type Match = {
   marketMessageId?: string;
   marketTs?: number;
 };
+
+/** The live value of one leg of a Match's 3-way market. */
+export function legValueOf(m: Match, leg: Leg): number {
+  if (leg === "draw") return m.drawPct ?? 0;
+  if (leg === "away") return m.awayPct ?? 0;
+  return m.current;
+}
 
 const USE_MOCK =
   (process.env.NEXT_PUBLIC_TXLINE_MOCK ?? "true").toLowerCase() !== "false";
@@ -114,6 +137,13 @@ function getSim(id: string): SimState {
   return s;
 }
 
+// Draw probability shrinks as either side pulls further ahead — same shape
+// bookmakers use, just crude: peaks ~26% at a 50/50 game, thins out at the edges.
+function drawFromHome(pHome: number): number {
+  const balance = 1 - Math.abs(pHome - 50) / 50; // 1 at 50/50, 0 at the extremes
+  return 12 + balance * 16;
+}
+
 function stepSim(s: SimState): OddsPoint {
   // The anchor is where the market "believes" the match is heading; it wanders slowly.
   s.anchor = clampProb(s.anchor + gaussian() * 0.6);
@@ -141,19 +171,29 @@ function stepSim(s: SimState): OddsPoint {
 
   if (Math.random() < 0.25 && s.minute < 90) s.minute += 1;
 
-  const point: OddsPoint = { t: Date.now(), p: Math.round(s.p * 10) / 10 };
+  const pDraw = drawFromHome(s.p);
+  const pAway = Math.max(1, 100 - s.p - pDraw);
+  const point: OddsPoint = {
+    t: Date.now(),
+    p: Math.round(s.p * 10) / 10,
+    pDraw: Math.round(pDraw * 10) / 10,
+    pAway: Math.round(pAway * 10) / 10,
+  };
   s.history.push(point);
   if (s.history.length > 180) s.history.shift();
   return point;
 }
 
 function simMatch(s: SimState): Match {
+  const last = s.history[s.history.length - 1];
   return {
     ...s.meta,
     minute: s.minute,
     scoreHome: s.scoreHome,
     scoreAway: s.scoreAway,
     current: Math.round(s.p * 10) / 10,
+    drawPct: last?.pDraw,
+    awayPct: last?.pAway,
     history: [...s.history],
   };
 }
@@ -167,7 +207,9 @@ function simMatch(s: SimState): Match {
 // server routes back onto lib/txline-server.ts.
 
 async function fetchRealMatches(): Promise<Match[]> {
-  const res = await fetch("/api/txline/matches", { cache: "no-store" });
+  // Tell the server which local calendar day is "today" for this viewer.
+  const tz = typeof window !== "undefined" ? new Date().getTimezoneOffset() : 0;
+  const res = await fetch(`/api/txline/matches?tz=${tz}`, { cache: "no-store" });
   const body = (await res.json()) as { matches: Match[]; error?: string };
   if (!res.ok) throw new Error(body.error ?? `matches ${res.status}`);
   return body.matches;
@@ -214,13 +256,19 @@ function subscribeRealMatch(
     away: string;
     homeCode: string;
     awayCode: string;
+    kickoff?: number;
+    oddsAvailable: boolean;
   };
   let target: Target | null = null;
   let display = 50;
+  let displayDraw = 25;
+  let displayAway = 25;
 
   fetchRealMatch(id).then((m) => {
     if (m && !stopped) {
       display = m.current;
+      displayDraw = m.drawPct ?? 25;
+      displayAway = m.awayPct ?? 25;
       target = {
         p: m.current,
         pDraw: m.drawPct ?? 0,
@@ -233,6 +281,8 @@ function subscribeRealMatch(
         away: m.away,
         homeCode: m.homeCode,
         awayCode: m.awayCode,
+        kickoff: m.kickoff,
+        oddsAvailable: m.oddsAvailable !== false,
       };
     }
   });
@@ -268,6 +318,7 @@ function subscribeRealMatch(
         live: Boolean(pt.live),
         messageId: pt.messageId,
         ts: pt.ts,
+        oddsAvailable: true, // a 200 response means fetchMatchPoint found a real market
       };
     } catch {
       /* hold last target — the server already holds last-good */
@@ -279,12 +330,26 @@ function subscribeRealMatch(
 
   const renderLoop = setInterval(() => {
     if (!target) return;
-    // ease toward the real value; snap when essentially there
-    const d = target.p - display;
-    display = Math.abs(d) < 0.08 ? target.p : display + d * 0.28;
-    const point: OddsPoint = { t: Date.now(), p: Math.round(display * 100) / 100 };
-    history.push(point);
-    if (history.length > 220) history.shift();
+    // No market yet — don't animate or record fake history points.
+    let point: OddsPoint;
+    if (!target.oddsAvailable) {
+      point = { t: Date.now(), p: target.p, pDraw: target.pDraw, pAway: target.pAway };
+    } else {
+      // ease each leg toward its real value; snap when essentially there
+      const ease = (cur: number, tgt: number) =>
+        Math.abs(tgt - cur) < 0.08 ? tgt : cur + (tgt - cur) * 0.28;
+      display = ease(display, target.p);
+      displayDraw = ease(displayDraw, target.pDraw);
+      displayAway = ease(displayAway, target.pAway);
+      point = {
+        t: Date.now(),
+        p: Math.round(display * 100) / 100,
+        pDraw: Math.round(displayDraw * 100) / 100,
+        pAway: Math.round(displayAway * 100) / 100,
+      };
+      history.push(point);
+      if (history.length > 220) history.shift();
+    }
     const match: Match = {
       id,
       home: target.home,
@@ -297,7 +362,9 @@ function subscribeRealMatch(
       current: target.p, // accurate real value for the big number
       drawPct: target.pDraw,
       awayPct: target.pAway,
+      kickoff: target.kickoff,
       live: target.live,
+      oddsAvailable: target.oddsAvailable,
       history: [...history],
       marketMessageId: target.messageId,
       marketTs: target.ts,

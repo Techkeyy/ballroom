@@ -4,6 +4,11 @@
  * Client engine for server-authoritative synchronized league rounds.
  * Everyone at the table plays the same round, on the same clock; the server
  * reads the live market and scores all guesses at once.
+ *
+ * Which market "leg" (home/draw/away) a round calls is decided when that
+ * round OPENS — it can't change mid-round (everyone must be calling the same
+ * number). `nextLeg`/`setNextLeg` here choose what the *next* round asks;
+ * `round.leg` is the leg the *current* round actually locked in.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +19,7 @@ import {
   fetchLeague,
   type LeagueRound,
   type RoundResult,
+  type Leg,
 } from "@/lib/league";
 
 export type SyncPhase = "opening" | "idle" | "locked" | "resolved";
@@ -33,10 +39,13 @@ export function useSyncRound(
   const [myMember, setMyMember] = useState<
     { points: number; streak: number; bestStreak: number; rounds: number } | null
   >(null);
+  const [nextLeg, setNextLeg] = useState<Leg>("home");
   const lastResolvedId = useRef<string | null>(null);
   const touched = useRef(false);
   const metaRef = useRef(meta);
   metaRef.current = meta;
+  const legRef = useRef<Leg>(nextLeg);
+  legRef.current = nextLeg;
 
   const addr = player.address;
 
@@ -44,7 +53,7 @@ export function useSyncRound(
   useEffect(() => {
     if (!code) return;
     let alive = true;
-    openRound(code, matchId, metaRef.current).then((r) => {
+    openRound(code, matchId, metaRef.current, legRef.current).then((r) => {
       if (alive && r) setRound(r);
     });
     return () => {
@@ -52,12 +61,13 @@ export function useSyncRound(
     };
   }, [code, matchId]);
 
-  // poll the shared round
+  // poll the shared round (also carries the desired next-leg for when the
+  // reveal window naturally elapses and the server auto-opens a fresh one)
   useEffect(() => {
     if (!code) return;
     let alive = true;
     const iv = setInterval(async () => {
-      const r = await fetchRound(code, matchId, metaRef.current);
+      const r = await fetchRound(code, matchId, metaRef.current, legRef.current);
       if (alive && r) setRound(r);
     }, 2000);
     return () => {
@@ -129,7 +139,7 @@ export function useSyncRound(
     if (!code) return;
     touched.current = false;
     setMyStreak(undefined);
-    const r = await openRound(code, matchId, metaRef.current);
+    const r = await openRound(code, matchId, metaRef.current, legRef.current);
     if (r) setRound(r);
   }, [code, matchId]);
 
@@ -157,5 +167,7 @@ export function useSyncRound(
     playAgain,
     otherGuesses,
     seated: round ? Object.keys(round.guesses).length : 0,
+    nextLeg,
+    setNextLeg,
   };
 }

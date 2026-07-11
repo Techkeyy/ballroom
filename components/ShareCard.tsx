@@ -17,6 +17,7 @@ export default function ShareCard({
   streak,
   rank,
   field,
+  legLabel,
   playerName,
   receiptId,
   onPlayAgain,
@@ -31,6 +32,8 @@ export default function ShareCard({
   rank?: number;
   /** how many players were in the round */
   field?: number;
+  /** which outcome was called — a team code, or "DRAW" */
+  legLabel?: string;
   playerName: string;
   receiptId?: string | null;
   onPlayAgain: () => void;
@@ -41,7 +44,8 @@ export default function ShareCard({
   const move = Math.round((actual - startProb) * 10) / 10;
 
   const brag =
-    `BALL ROOM — ${match.home} ${match.minute}'\n` +
+    `BALL ROOM — ${match.home} v ${match.away}, ${match.minute}'` +
+    (legLabel ? ` (${legLabel})\n` : "\n") +
     `Market moved ${startProb} to ${actual} (${move >= 0 ? "+" : ""}${move}).\n` +
     `Called ${guess} — off by ${err}. ${v.label}. +${points} pts, streak ${streak}.\n` +
     `Read the market, not the match.`;
@@ -78,6 +82,11 @@ export default function ShareCard({
               {match.minute}′
             </span>
           </p>
+          {legLabel && (
+            <p className="mt-0.5 text-[13px] text-ivory-dim">
+              Called {legLabel === "DRAW" ? "the draw" : `${legLabel} to win`}
+            </p>
+          )}
 
           <div className="my-6 grid grid-cols-3 border-y border-white/[0.08] py-4">
             <Field label="Market moved" value={`${startProb}→${actual}`} />

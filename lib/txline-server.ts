@@ -68,7 +68,7 @@ async function get<T>(path: string): Promise<T> {
 
 type FixtureSnapshot = {
   FixtureId: number;
-  StartTime: string;
+  StartTime: number; // epoch ms (confirmed live: e.g. 1783627200000)
   Competition: string;
   CompetitionId: number;
   Participant1: string;
@@ -204,6 +204,24 @@ async function fetchOddsFor(fixtureId: number): Promise<OddsSnapshot[]> {
   }
 }
 
+/**
+ * TxLINE's odds/snapshot occasionally returns a partial batch right as a
+ * market opens (observed: the same fixture returning 17, then 1, then 0
+ * records within seconds — genuinely flaky upstream, not a caching bug on our
+ * side). Retry a few times and prefer whichever read actually has the 3-way
+ * result line before giving up.
+ */
+async function fetchOddsForResilient(fixtureId: number): Promise<OddsSnapshot[]> {
+  let best: OddsSnapshot[] = [];
+  for (let i = 0; i < 3; i++) {
+    const data = await fetchOddsFor(fixtureId);
+    if (data.some((o) => o.SuperOddsType === RESULT_MARKET && !o.MarketPeriod)) return data;
+    if (data.length > best.length) best = data;
+    if (i < 2) await new Promise((r) => setTimeout(r, 350));
+  }
+  return best;
+}
+
 async function fetchScoreFor(fixtureId: number): Promise<ScoreSnapshot | null> {
   try {
     const events = await get<ScoreSnapshot[]>(`/scores/snapshot/${fixtureId}`);
@@ -215,41 +233,95 @@ async function fetchScoreFor(fixtureId: number): Promise<ScoreSnapshot | null> {
   }
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * "Today" in the VIEWER's local calendar day, not UTC — TxLINE's fixtures
+ * endpoint has no end-date filter (`startEpochDay` only bounds the start, and
+ * returns up to 30 days out), so we fetch the default window and filter here.
+ * tzOffsetMin is `Date.getTimezoneOffset()` from the browser (minutes to ADD
+ * to local time to reach UTC).
+ */
+function todayWindowUTC(tzOffsetMin: number): { start: number; end: number } {
+  const nowUTC = Date.now();
+  const nowLocal = nowUTC - tzOffsetMin * 60_000;
+  const localDayStart = Math.floor(nowLocal / DAY_MS) * DAY_MS;
+  const start = localDayStart + tzOffsetMin * 60_000;
+  return { start, end: start + DAY_MS };
+}
+
 /** World Cup fixtures with their current market number, scoreline and live flag. */
-export async function fetchWorldCupMatches(): Promise<Match[]> {
+export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
   const fixtures = await get<FixtureSnapshot[]>(
     `/fixtures/snapshot?competitionId=${COMPETITION_ID}`,
   );
   // warm the orientation cache so per-fixture reads don't refetch the list
   for (const f of fixtures) fixtureOrientation.set(f.FixtureId, f.Participant1IsHome);
 
+  const { start, end } = todayWindowUTC(tzOffsetMin);
+
   const built = await Promise.all(
     fixtures.map(async (f) => {
+      // Keep it if it kicks off in the viewer's "today". (Live fixtures pass
+      // through fetchMatchPoint's own live-flag below regardless of window.)
+      const inTodayWindow = f.StartTime >= start && f.StartTime < end;
       const pt = await fetchMatchPoint(String(f.FixtureId));
-      if (!pt) return null;
+      if (!inTodayWindow && !pt?.live) return null;
+
       const home = f.Participant1IsHome ? f.Participant1 : f.Participant2;
       const away = f.Participant1IsHome ? f.Participant2 : f.Participant1;
+
+      // TxLINE hasn't published a market for this fixture yet (common many
+      // hours before kickoff) — still show it, just without a real number.
+      if (!pt) {
+        const match: Match = {
+          id: String(f.FixtureId),
+          home,
+          away,
+          homeCode: code(home),
+          awayCode: code(away),
+          kickoff: f.StartTime,
+          minute: 0,
+          scoreHome: 0,
+          scoreAway: 0,
+          current: 50,
+          drawPct: 0,
+          awayPct: 0,
+          live: false,
+          oddsAvailable: false,
+          history: [],
+        };
+        return match;
+      }
+
       const match: Match = {
         id: String(f.FixtureId),
         home,
         away,
         homeCode: code(home),
         awayCode: code(away),
+        kickoff: f.StartTime,
         minute: pt.minute,
         scoreHome: pt.scoreHome,
         scoreAway: pt.scoreAway,
         current: pt.p,
+        drawPct: pt.pDraw,
+        awayPct: pt.pAway,
         live: pt.live,
+        oddsAvailable: true,
         history: [{ t: Date.now(), p: pt.p }],
       };
       return match;
     }),
   );
 
-  // live matches first, then by kickoff-ish (name) for stability
+  // live first, then soonest kickoff, then finished last
   return built
     .filter((m): m is Match => m !== null)
-    .sort((a, b) => Number(b.live) - Number(a.live));
+    .sort((a, b) => {
+      if (Boolean(a.live) !== Boolean(b.live)) return Number(b.live) - Number(a.live);
+      return (a.kickoff ?? 0) - (b.kickoff ?? 0);
+    });
 }
 
 // Cache fixture home/away orientation so per-tick polls don't refetch the list.
@@ -290,7 +362,7 @@ const lastPoint = new Map<number, MatchPoint & { at: number }>();
 export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | null> {
   const id = Number(fixtureId);
   const [odds, score, p1Home] = await Promise.all([
-    fetchOddsFor(id),
+    fetchOddsForResilient(id),
     fetchScoreFor(id),
     participant1IsHome(id),
   ]);

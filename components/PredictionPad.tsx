@@ -14,7 +14,7 @@ export default function PredictionPad({
   msLeft,
   onLock,
   disabled,
-  homeCode,
+  legLabel,
 }: {
   current: number;
   guess: number;
@@ -23,7 +23,8 @@ export default function PredictionPad({
   msLeft: number;
   onLock: () => void;
   disabled?: boolean;
-  homeCode?: string;
+  /** the outcome being called — a team code, or "DRAW" */
+  legLabel?: string;
 }) {
   const secs = Math.ceil(msLeft / 1000);
   const windowSecs = Math.round(PREDICT_WINDOW_MS / 1000);
@@ -32,7 +33,9 @@ export default function PredictionPad({
   if (locked) {
     return (
       <div className="panel-strong p-6 text-center">
-        <p className="eyebrow">Locked at {current} · your call</p>
+        <p className="eyebrow">
+          {legLabel ? `${legLabel} locked at ${current}` : `Locked at ${current}`} · your call
+        </p>
         <p className="tabular my-3 font-num text-[56px] font-light leading-none text-gold">
           {guess}
           <span className="text-2xl text-ivory-faint">%</span>
@@ -56,7 +59,9 @@ export default function PredictionPad({
     <div className="panel-strong p-6">
       <div className="mb-4 flex items-baseline justify-between">
         <p className="eyebrow">
-          {homeCode ? `${homeCode} win % in ${windowSecs}s` : `The market in ${windowSecs}s`}
+          {legLabel
+            ? `${legLabel === "DRAW" ? "Draw" : `${legLabel} win`} % in ${windowSecs}s`
+            : `The market in ${windowSecs}s`}
         </p>
         <p className="tabular font-mono text-[11px] tracking-[0.12em] text-ivory-faint">
           now {current}

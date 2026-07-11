@@ -14,8 +14,12 @@ export default function JoinPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [league, setLeagueState] = useState<League | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [suggestedName, setSuggestedName] = useState("");
 
-  // Look the table up first so the invite shows its name.
+  // Look the table up. If this device is ALREADY a seated member of THIS
+  // table, skip straight in — otherwise always ask who's joining (never
+  // silently reuse a name/identity from some other context: playing solo
+  // earlier, or opening the link on someone else's browser).
   useEffect(() => {
     fetchLeague(code).then((l) => {
       if (!l) {
@@ -23,9 +27,16 @@ export default function JoinPage() {
         return;
       }
       setLeagueState(l);
+      const s = load();
+      if (s.player && l.members[s.player.address]) {
+        setLeague(l.code, l.name);
+        router.replace("/play");
+        return;
+      }
+      setSuggestedName(s.player?.name ?? "");
       setPhase("signin");
     });
-  }, [code]);
+  }, [code, router]);
 
   async function seat(address: string, playerName: string) {
     setPhase("joining");
@@ -44,14 +55,6 @@ export default function JoinPage() {
     if (s.player) seat(s.player.address, s.player.name);
   }
 
-  // Already signed in? Take the seat directly.
-  useEffect(() => {
-    if (phase !== "signin") return;
-    const s = load();
-    if (s.player) seat(s.player.address, s.player.name);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
-
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
       <header className="animate-riseIn text-center">
@@ -64,6 +67,11 @@ export default function JoinPage() {
           <p className="tabular mt-4 font-mono text-[11px] tracking-[0.14em] text-ivory-dim">
             TABLE {league.code} · {Object.keys(league.members).length}{" "}
             {Object.keys(league.members).length === 1 ? "SEAT" : "SEATS"} TAKEN
+          </p>
+        )}
+        {league && Object.keys(league.members).length > 0 && (
+          <p className="mt-2 text-[13px] text-ivory-dim">
+            Already seated: {Object.values(league.members).map((m) => m.name).join(", ")}
           </p>
         )}
       </header>
@@ -91,9 +99,15 @@ export default function JoinPage() {
         {phase === "signin" && (
           <div className="space-y-6">
             <p className="text-center text-sm leading-relaxed text-ivory-dim">
-              Sign in and your seat is saved.
+              {suggestedName
+                ? `Joining as "${suggestedName}"? Confirm the name below, or change it — then take your seat.`
+                : "Type the name your table will know you by, then take your seat."}
             </p>
-            <WalletButton onSignIn={handleSignIn} />
+            <WalletButton
+              onSignIn={handleSignIn}
+              defaultName={suggestedName}
+              ctaLabel="Join with Solana"
+            />
           </div>
         )}
 
