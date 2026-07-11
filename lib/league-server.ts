@@ -259,6 +259,23 @@ export async function joinLeague(
   return league;
 }
 
+/** Remove a member from a table. Reassigns host if the host leaves. */
+export async function leaveLeague(
+  code: string,
+  address: string,
+): Promise<League | null> {
+  const league = await getLeague(code);
+  if (!league || !league.members[address]) return league;
+  const name = league.members[address].name;
+  delete league.members[address];
+  if (league.host === address) {
+    league.host = Object.keys(league.members)[0] ?? address;
+  }
+  await putLeague(league);
+  await postToFeed(code, { kind: "event", text: `${name} left the table` });
+  return league;
+}
+
 // ---- synchronized rounds ----------------------------------------------------
 
 const REVEAL_MS = 9_000; // how long a resolved round lingers before a new one opens
@@ -381,9 +398,15 @@ export async function getOrOpenRound(
     await putRound(key, round);
     return round;
   }
-  // A round already live is locked to whichever leg it opened with — the
-  // requested leg only takes effect on the NEXT round.
-  if (round && !round.resolved) return round;
+  // A round already live is locked to whichever leg it opened with — UNLESS no
+  // one has locked a call yet, in which case switching the leg is safe (nobody
+  // committed) and re-opens the round on the new leg immediately.
+  if (round && !round.resolved) {
+    const noneLocked = Object.keys(round.guesses).length === 0;
+    const wantsLegChange = opts.open && opts.leg && opts.leg !== round.leg;
+    if (!(noneLocked && wantsLegChange)) return round;
+    // else fall through and open a fresh round on the requested leg
+  }
   if (round && round.resolved && now - round.deadline < REVEAL_MS && !opts.open) {
     return round; // still revealing results
   }

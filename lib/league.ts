@@ -164,6 +164,18 @@ export async function postReact(
   }
 }
 
+/** Leave a table server-side (best-effort — local state clears regardless). */
+export async function leaveLeague(code: string, address: string): Promise<void> {
+  try {
+    await req(`/api/league/${code}/leave`, {
+      method: "POST",
+      body: JSON.stringify({ address }),
+    });
+  } catch {
+    /* local leave still applies */
+  }
+}
+
 export function leagueLink(code: string): string {
   if (typeof window === "undefined") return `/join/${code}`;
   return `${window.location.origin}/join/${code}`;

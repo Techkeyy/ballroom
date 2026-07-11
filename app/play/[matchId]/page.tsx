@@ -48,6 +48,9 @@ export default function MatchPage() {
   const matchRef = useRef<Match | null>(null);
   const lockRef = useRef<{ startProb: number; guess: number; leg: Leg } | null>(null);
   const receiptDone = useRef<string | null>(null);
+  // once a fixture's market has opened, keep showing it — TxLINE's snapshot can
+  // momentarily drop the 1X2 line, and we don't want the whole panel to flap.
+  const marketSeenRef = useRef(false);
 
   // always-fresh state for callbacks that fire outside render (timers)
   const stateRef = useRef<Persisted | null>(null);
@@ -267,7 +270,8 @@ export default function MatchPage() {
 
   // ---- live status ---------------------------------------------------------
   const isLive = dataSource === "simulator" ? true : Boolean(match.live);
-  const marketOpen = dataSource === "simulator" ? true : match.oddsAvailable !== false;
+  if (dataSource !== "simulator" && match.oddsAvailable !== false) marketSeenRef.current = true;
+  const marketOpen = dataSource === "simulator" ? true : marketSeenRef.current;
   const statusLabel =
     dataSource === "simulator"
       ? "SIM"
@@ -323,7 +327,7 @@ export default function MatchPage() {
 
   function selectLeg(leg: Leg) {
     if (!legsClickable) return;
-    if (leagueMode) sync.setNextLeg(leg);
+    if (leagueMode) sync.changeLeg(leg);
     else setSoloLeg(leg);
   }
 

@@ -143,6 +143,23 @@ export function useSyncRound(
     if (r) setRound(r);
   }, [code, matchId]);
 
+  /**
+   * Switch the market leg. If the live round has no calls yet the server
+   * re-opens it on the new leg immediately (instant); otherwise it queues the
+   * leg for the next round.
+   */
+  const changeLeg = useCallback(
+    async (leg: Leg) => {
+      setNextLeg(leg);
+      legRef.current = leg;
+      if (!code) return;
+      touched.current = false;
+      const r = await openRound(code, matchId, metaRef.current, leg);
+      if (r) setRound(r);
+    },
+    [code, matchId],
+  );
+
   const setGuessTouched = useCallback((v: number) => {
     touched.current = true;
     setGuess(v);
@@ -165,6 +182,7 @@ export function useSyncRound(
     myStreak,
     myMember,
     playAgain,
+    changeLeg,
     otherGuesses,
     seated: round ? Object.keys(round.guesses).length : 0,
     nextLeg,

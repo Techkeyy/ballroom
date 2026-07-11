@@ -6,6 +6,10 @@ import WalletButton from "@/components/WalletButton";
 import { load, signIn, setLeague as seatAtLeague, shortAddr, type Player } from "@/lib/store";
 import { createLeague, leagueLink } from "@/lib/league";
 
+function scrollToId(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+}
+
 export default function Home() {
   const router = useRouter();
   const [player, setPlayer] = useState<Player | null>(null);
@@ -51,165 +55,203 @@ export default function Home() {
     e.preventDefault();
     const code = codeInput.trim().toUpperCase();
     if (!code) return;
-    // /join/[code] handles the rest: lookup, identity, seating — same as a
-    // shared link, just typed in instead of tapped.
     router.push(`/join/${code}`);
   }
 
+  const primaryCta = () => (player ? router.push("/play") : scrollToId("enter"));
+
   return (
     <main>
-      {/* ===== HERO: image underneath, writing layered on top ===== */}
-      <section className="relative min-h-[100svh] w-full overflow-hidden">
-        {/* image layer */}
+      {/* ===== TOP NAV — thin bar over the hero ===== */}
+      <nav className="absolute inset-x-0 top-0 z-30">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5 md:px-10">
+          <button
+            onClick={() => scrollToId("top")}
+            className="font-mono text-[12px] font-medium uppercase tracking-[0.28em] text-ivory"
+          >
+            Ball Room
+          </button>
+          <div className="hidden items-center gap-8 md:flex">
+            <NavLink onClick={() => scrollToId("how")}>How it works</NavLink>
+            {player && <NavLink onClick={() => router.push("/play")}>Today&apos;s card</NavLink>}
+            <NavLink onClick={() => scrollToId("enter")}>
+              {player ? "Your table" : "Take a seat"}
+            </NavLink>
+          </div>
+          <button onClick={primaryCta} className="btn btn-primary px-5 py-2.5">
+            {player ? "Enter" : "Play"}
+          </button>
+        </div>
+      </nav>
+
+      {/* ===== HERO ===== */}
+      <section id="top" className="relative min-h-[100svh] w-full overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/hero.png"
-          alt="Ball Room — the beautiful game meets the egoist striker"
-          className="absolute inset-0 h-full w-full object-cover object-[center_22%] md:object-[center_28%]"
+          src="/hero.jpg"
+          alt="Ball Room"
+          className="absolute inset-0 h-full w-full object-cover object-[70%_center] md:object-center"
         />
-        {/* scrims: darken bottom & left so the writing reads, feather the top */}
+        {/* scrims for legibility */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "linear-gradient(to top, #0b0a0e 2%, rgba(11,10,14,0.72) 26%, rgba(11,10,14,0.15) 55%, rgba(11,10,14,0.45) 100%)",
+              "linear-gradient(to top, #0b0a0e 4%, rgba(11,10,14,0.55) 30%, transparent 62%, rgba(11,10,14,0.5) 100%)",
           }}
         />
         <div
-          className="pointer-events-none absolute inset-0 hidden md:block"
+          className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "linear-gradient(to right, rgba(11,10,14,0.85) 0%, rgba(11,10,14,0.35) 42%, transparent 70%)",
+              "linear-gradient(to right, rgba(11,10,14,0.85) 0%, rgba(11,10,14,0.4) 40%, transparent 72%)",
           }}
         />
 
-        {/* overlaid content — bottom-left on desktop, not a centered column */}
-        <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-end px-6 pb-14 md:px-10 md:pb-20">
-          <div className="grid w-full items-end gap-10 md:grid-cols-[1.1fr_minmax(320px,0.9fr)]">
-            {/* left: the pitch */}
-            <div className="animate-riseIn max-w-xl">
-              <p className="eyebrow" style={{ textShadow: "0 1px 16px rgba(0,0,0,0.9)" }}>
-                World Cup · Powered by TxLINE
-              </p>
-              <h1 className="mt-4 font-display text-[68px] font-medium leading-[0.9] tracking-tight text-ivory md:text-[92px]">
-                Ball <span className="italic text-gold">Room</span>
-              </h1>
-              <p className="mt-6 max-w-md font-display text-[24px] font-medium leading-[1.15] text-ivory md:text-[30px]">
-                Read the market, <span className="italic text-gold">not the match.</span>
-              </p>
-              <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-ivory-dim">
-                Call where the live World Cup odds move next — before your friends
-                do. Free to play, skill only, nothing staked.
-              </p>
+        {/* bottom-left title block — Activision-style */}
+        <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-end px-6 pb-16 md:px-10 md:pb-24">
+          <div className="animate-riseIn max-w-2xl">
+            <p className="eyebrow" style={{ textShadow: "0 1px 16px rgba(0,0,0,0.9)" }}>
+              World Cup · Powered by TxLINE
+            </p>
+            <h1 className="mt-4 font-display font-semibold uppercase leading-[0.82] tracking-tight text-ivory">
+              <span className="block text-[64px] md:text-[128px]">Ball</span>
+              <span className="block text-[64px] text-gold md:text-[128px]">Room</span>
+            </h1>
+            <p className="mt-6 max-w-md text-[16px] leading-relaxed text-ivory-dim md:text-[18px]">
+              Read the market, not the match. Race your friends to call where the
+              live World Cup odds move next — free to play, skill only.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button onClick={primaryCta} className="btn btn-primary px-8 py-4">
+                {player ? "Enter the Ball Room" : "Take a seat"}
+              </button>
+              <button onClick={() => scrollToId("how")} className="btn btn-ghost px-8 py-4">
+                How it works
+              </button>
             </div>
+          </div>
+        </div>
 
-            {/* right: the door (floats over the image) */}
-            <div
-              className="panel-strong animate-riseIn p-6 backdrop-blur-md md:p-7"
-              style={{
-                animationDelay: "120ms",
-                background: "rgba(15,14,20,0.72)",
-                WebkitBackdropFilter: "blur(10px)",
-              }}
-            >
-              {player ? (
-                <div className="space-y-5">
-                  <div>
-                    <p className="eyebrow mb-2 !text-gold">
-                      {leagueCode ? "At the table" : "Signed in"}
-                    </p>
-                    <p className="font-display text-3xl font-medium text-ivory">
-                      {player.name}
-                    </p>
-                    <p className="tabular mt-1 font-mono text-[10px] tracking-[0.12em] text-ivory-faint">
-                      {shortAddr(player.address)} · {league}
-                    </p>
-                  </div>
+        {/* scroll cue dots (functional — jump to the three steps) */}
+        <div className="absolute inset-x-0 bottom-6 z-10 hidden items-center justify-center gap-2.5 md:flex">
+          {["step-1", "step-2", "step-3"].map((id) => (
+            <button
+              key={id}
+              onClick={() => scrollToId(id)}
+              aria-label={`Go to ${id}`}
+              className="h-1.5 w-1.5 rounded-full bg-ivory/30 transition-colors hover:bg-gold"
+            />
+          ))}
+        </div>
+      </section>
 
-                  <div className="grid grid-cols-3 divide-x divide-white/[0.07] border-y border-white/[0.07] py-4">
-                    <Stat label="Points" value={player.points} />
-                    <Stat label="Streak" value={player.streak} />
-                    <Stat label="Rounds" value={player.rounds} />
-                  </div>
+      {/* ===== ENTER — the door (sign-in / dashboard / code) ===== */}
+      <section
+        id="enter"
+        className="scroll-mt-20 border-t border-white/[0.07] px-6 py-20 md:px-10 md:py-24"
+      >
+        <div className="mx-auto grid max-w-6xl items-start gap-12 md:grid-cols-[1fr_minmax(340px,0.85fr)]">
+          <div>
+            <p className="eyebrow mb-3">{player ? "You're in" : "Get in"}</p>
+            <h2 className="max-w-md font-display text-[34px] font-medium leading-tight text-ivory md:text-[46px]">
+              {player ? "Pick up where you left off." : "One name. One wallet. One table."}
+            </h2>
+            <p className="mt-4 max-w-md text-[15px] leading-relaxed text-ivory-dim">
+              {player
+                ? "Jump into today's card, or bring friends to your table."
+                : "Sign in with Solana, pick a name your table will know you by, and you're seated. Nothing staked, ever."}
+            </p>
+          </div>
 
-                  <button
-                    onClick={() => router.push("/play")}
-                    className="btn btn-primary w-full py-4"
-                  >
-                    Enter the Ball Room
-                  </button>
-
-                  {leagueCode ? (
-                    <button onClick={copyInvite} className="btn btn-ghost w-full py-3">
-                      {copied ? "Invite copied" : `Invite to table ${leagueCode}`}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleCreateTable}
-                      disabled={creating}
-                      className="btn btn-ghost w-full py-3 disabled:opacity-50"
-                    >
-                      {creating ? "Setting the table" : "Open your own table"}
-                    </button>
-                  )}
+          <div className="panel-strong p-6 md:p-7">
+            {player ? (
+              <div className="space-y-5">
+                <div>
+                  <p className="eyebrow mb-2 !text-gold">
+                    {leagueCode ? "At the table" : "Signed in"}
+                  </p>
+                  <p className="font-display text-3xl font-medium text-ivory">{player.name}</p>
+                  <p className="tabular mt-1 font-mono text-[10px] tracking-[0.12em] text-ivory-faint">
+                    {shortAddr(player.address)} · {league}
+                  </p>
                 </div>
-              ) : (
-                <div className="space-y-5">
-                  <div>
-                    <p className="eyebrow mb-2 !text-gold">Take a seat</p>
-                    <p className="text-sm leading-relaxed text-ivory-dim">
-                      Your wallet is the invitation. Pick a name your table will
-                      know you by.
-                    </p>
-                  </div>
-                  <WalletButton onSignIn={handleSignIn} />
-                </div>
-              )}
 
-              {/* someone told you the code instead of sending a link */}
-              <div className="mt-6 border-t border-white/[0.08] pt-5">
-                <p className="eyebrow mb-2">Have a table code?</p>
-                <form onSubmit={joinByCode} className="flex gap-2">
-                  <input
-                    value={codeInput}
-                    onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-                    placeholder="XYZ12"
-                    maxLength={8}
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    className="tabular w-0 flex-1 rounded-md border border-white/[0.12] bg-ink-950/60 px-3 py-2.5 text-sm uppercase tracking-[0.1em] text-ivory placeholder-ivory-faint outline-none transition-colors focus:border-gold/50"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!codeInput.trim()}
-                    className="btn btn-ghost px-4 disabled:opacity-40"
-                  >
-                    Join
+                <div className="grid grid-cols-3 divide-x divide-white/[0.07] border-y border-white/[0.07] py-4">
+                  <Stat label="Points" value={player.points} />
+                  <Stat label="Streak" value={player.streak} />
+                  <Stat label="Rounds" value={player.rounds} />
+                </div>
+
+                <button onClick={() => router.push("/play")} className="btn btn-primary w-full py-4">
+                  Enter the Ball Room
+                </button>
+
+                {leagueCode ? (
+                  <button onClick={copyInvite} className="btn btn-ghost w-full py-3">
+                    {copied ? "Invite copied" : `Invite to table ${leagueCode}`}
                   </button>
-                </form>
+                ) : (
+                  <button
+                    onClick={handleCreateTable}
+                    disabled={creating}
+                    className="btn btn-ghost w-full py-3 disabled:opacity-50"
+                  >
+                    {creating ? "Setting the table" : "Open your own table"}
+                  </button>
+                )}
               </div>
+            ) : (
+              <div className="space-y-5">
+                <div>
+                  <p className="eyebrow mb-2 !text-gold">Take a seat</p>
+                  <p className="text-sm leading-relaxed text-ivory-dim">
+                    Your wallet is the invitation. Pick a name your table will know you by.
+                  </p>
+                </div>
+                <WalletButton onSignIn={handleSignIn} />
+              </div>
+            )}
+
+            {/* someone told you the code instead of sending a link */}
+            <div className="mt-6 border-t border-white/[0.08] pt-5">
+              <p className="eyebrow mb-2">Have a table code?</p>
+              <form onSubmit={joinByCode} className="flex gap-2">
+                <input
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                  placeholder="XYZ12"
+                  maxLength={8}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  className="tabular w-0 flex-1 rounded-md border border-white/[0.12] bg-ink-950/60 px-3 py-2.5 text-sm uppercase tracking-[0.1em] text-ivory placeholder-ivory-faint outline-none transition-colors focus:border-gold/50"
+                />
+                <button type="submit" disabled={!codeInput.trim()} className="btn btn-ghost px-4 disabled:opacity-40">
+                  Join
+                </button>
+              </form>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ===== HOW IT WORKS: wide 3-up on ink ===== */}
-      <section className="border-t border-white/[0.07] px-6 py-20 md:px-10 md:py-28">
+      {/* ===== HOW IT WORKS ===== */}
+      <section id="how" className="scroll-mt-20 border-t border-white/[0.07] px-6 py-20 md:px-10 md:py-28">
         <div className="mx-auto max-w-6xl">
           <p className="eyebrow mb-3">How the room works</p>
           <h2 className="mb-12 max-w-xl font-display text-[34px] font-medium leading-tight text-ivory md:text-[44px]">
             Three moves. One shared clock.
           </h2>
           <div className="grid gap-px overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.05] md:grid-cols-3">
-            <Step n="01" title="Pick a live match">
-              Every fixture carries a live number — the market&apos;s belief,
-              updated as the game breathes.
+            <Step id="step-1" n="01" title="Pick a live match">
+              Every fixture carries a live number — the market&apos;s belief, updated
+              as the game breathes.
             </Step>
-            <Step n="02" title="Call the next move">
+            <Step id="step-2" n="02" title="Call the next move">
               Where does that number sit in ninety seconds? Lock your read against
               the table.
             </Step>
-            <Step n="03" title="Closest wins the room">
+            <Step id="step-3" n="03" title="Closest wins the room">
               Precision scores. Streaks compound. Every call becomes a receipt,
               proven on Solana.
             </Step>
@@ -224,32 +266,41 @@ export default function Home() {
   );
 }
 
+function NavLink({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="font-mono text-[11px] uppercase tracking-[0.18em] text-ivory-dim transition-colors hover:text-gold"
+    >
+      {children}
+    </button>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="text-center">
-      <p className="tabular font-num text-[26px] font-light leading-none text-ivory">
-        {value}
-      </p>
+      <p className="tabular font-num text-[26px] font-light leading-none text-ivory">{value}</p>
       <p className="eyebrow mt-2">{label}</p>
     </div>
   );
 }
 
 function Step({
+  id,
   n,
   title,
   children,
 }: {
+  id?: string;
   n: string;
   title: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-ink-950/60 p-7">
+    <div id={id} className="scroll-mt-24 bg-ink-950/60 p-7">
       <span className="tabular font-mono text-[11px] text-gold">{n}</span>
-      <p className="mt-4 font-display text-[22px] font-semibold leading-tight text-ivory">
-        {title}
-      </p>
+      <p className="mt-4 font-display text-[22px] font-semibold leading-tight text-ivory">{title}</p>
       <p className="mt-2 text-[14px] leading-relaxed text-ivory-dim">{children}</p>
     </div>
   );

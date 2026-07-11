@@ -80,6 +80,15 @@ export function setLeague(code: string, name: string): Persisted {
   return state;
 }
 
+/** Leave the current table — back to solo. Keeps the player identity. */
+export function leaveTable(): Persisted {
+  const state = load();
+  state.leagueCode = null;
+  state.league = "Solo";
+  save(state);
+  return state;
+}
+
 /** Throwaway address for the no-wallet guest path. */
 export function fakeAddress(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789";

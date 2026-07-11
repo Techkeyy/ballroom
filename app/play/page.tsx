@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getLiveMatches, dataSource, type Match } from "@/lib/txline";
-import { load, type Persisted } from "@/lib/store";
-import { leagueLink } from "@/lib/league";
+import { load, leaveTable, setLeague as seatAtLeague, type Persisted } from "@/lib/store";
+import { leagueLink, leaveLeague, createLeague } from "@/lib/league";
 import Leaderboard from "@/components/Leaderboard";
 import TableFeed from "@/components/TableFeed";
 
@@ -14,6 +14,7 @@ export default function PlayPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [state, setState] = useState<Persisted | null>(null);
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const s = load();
@@ -23,6 +24,34 @@ export default function PlayPage() {
     }
     setState(s);
   }, [router]);
+
+  async function handleLeave() {
+    if (busy || !state?.leagueCode || !state.player) return;
+    setBusy(true);
+    try {
+      await leaveLeague(state.leagueCode, state.player.address);
+      setState(leaveTable());
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleNewTable() {
+    if (busy || !state?.player) return;
+    setBusy(true);
+    try {
+      // leave the current table first (if any), then open a fresh one
+      if (state.leagueCode) {
+        await leaveLeague(state.leagueCode, state.player.address);
+        leaveTable();
+      }
+      const p = state.player;
+      const l = await createLeague(`${p.name}'s Table`, p.address, p.name);
+      setState(seatAtLeague(l.code, l.name));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -74,14 +103,30 @@ export default function PlayPage() {
       {/* the room — visible the instant you're at a real table */}
       {state?.leagueCode && (
         <div className="mb-8">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-y-2">
             <p className="eyebrow !text-gold">Your table</p>
-            <button
-              onClick={copyInvite}
-              className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-gold"
-            >
-              {copied ? "LINK COPIED" : `INVITE · ${state.leagueCode}`}
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={copyInvite}
+                className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-gold"
+              >
+                {copied ? "LINK COPIED" : `INVITE · ${state.leagueCode}`}
+              </button>
+              <button
+                onClick={handleNewTable}
+                disabled={busy}
+                className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-gold disabled:opacity-40"
+              >
+                NEW TABLE
+              </button>
+              <button
+                onClick={handleLeave}
+                disabled={busy}
+                className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-rose disabled:opacity-40"
+              >
+                LEAVE
+              </button>
+            </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2 md:items-start">
             <Leaderboard
@@ -100,6 +145,22 @@ export default function PlayPage() {
               />
             )}
           </div>
+        </div>
+      )}
+
+      {/* solo — offer to open a table */}
+      {state && !state.leagueCode && (
+        <div className="panel mb-8 flex flex-wrap items-center justify-between gap-3 p-4">
+          <p className="text-[14px] text-ivory-dim">
+            You&apos;re playing solo. Open a table to race your friends.
+          </p>
+          <button
+            onClick={handleNewTable}
+            disabled={busy}
+            className="btn btn-ghost px-5 py-2.5 disabled:opacity-40"
+          >
+            {busy ? "Opening" : "Open a table"}
+          </button>
         </div>
       )}
 

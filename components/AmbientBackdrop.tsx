@@ -8,9 +8,9 @@ export default function AmbientBackdrop() {
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/hero.png"
+        src="/hero.jpg"
         alt=""
-        className="h-full w-full object-cover object-[center_20%]"
+        className="h-full w-full object-cover object-center"
         style={{
           opacity: 0.14,
           filter: "blur(2px) saturate(0.9)",
