@@ -176,6 +176,35 @@ export async function leaveLeague(code: string, address: string): Promise<void> 
   }
 }
 
+/** Host removes a member. */
+export async function kickMember(
+  code: string,
+  address: string,
+  target: string,
+): Promise<League | null> {
+  try {
+    const { league } = await req<{ league: League }>(`/api/league/${code}/kick`, {
+      method: "POST",
+      body: JSON.stringify({ address, target }),
+    });
+    return league;
+  } catch {
+    return null;
+  }
+}
+
+/** Host closes the table for everyone. */
+export async function dissolveTable(code: string, address: string): Promise<void> {
+  try {
+    await req(`/api/league/${code}/dissolve`, {
+      method: "POST",
+      body: JSON.stringify({ address }),
+    });
+  } catch {
+    /* local reset still applies */
+  }
+}
+
 export function leagueLink(code: string): string {
   if (typeof window === "undefined") return `/join/${code}`;
   return `${window.location.origin}/join/${code}`;

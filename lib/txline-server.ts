@@ -95,12 +95,13 @@ type ScorePeriod = { Goals?: number; Corners?: number };
 type ScoreSnapshot = {
   FixtureId: number;
   GameState?: string;
+  StatusId?: number;
   Seq?: number;
   Ts?: number;
   Clock?: { Running?: boolean; Seconds?: number };
   Score?: {
-    Participant1?: { Total?: ScorePeriod };
-    Participant2?: { Total?: ScorePeriod };
+    Participant1?: { Total?: ScorePeriod; HT?: ScorePeriod };
+    Participant2?: { Total?: ScorePeriod; HT?: ScorePeriod };
   };
   Participant1IsHome?: boolean;
 };
@@ -223,14 +224,43 @@ async function fetchOddsForResilient(fixtureId: number): Promise<OddsSnapshot[]>
 }
 
 async function fetchScoreFor(fixtureId: number): Promise<ScoreSnapshot | null> {
-  try {
-    const events = await get<ScoreSnapshot[]>(`/scores/snapshot/${fixtureId}`);
-    if (!Array.isArray(events) || !events.length) return null;
-    // latest event message wins
-    return events.reduce((a, b) => ((b.Seq ?? 0) > (a.Seq ?? 0) ? b : a));
-  } catch {
-    return null;
+  let events: ScoreSnapshot[] = [];
+  for (let i = 0; i < 2; i++) {
+    try {
+      const e = await get<ScoreSnapshot[]>(`/scores/snapshot/${fixtureId}`);
+      if (Array.isArray(e) && e.length) {
+        events = e;
+        break;
+      }
+    } catch {
+      /* retry */
+    }
+    if (i < 1) await new Promise((r) => setTimeout(r, 300));
   }
+  if (!events.length) return null;
+
+  // The snapshot is a stream of event messages (some are "discarded" and carry
+  // no score). Aggregate the truth: goals & clock only ever climb, so take the
+  // max across all events; use the newest event for status/orientation.
+  const latest = events.reduce((a, b) => ((b.Seq ?? 0) > (a.Seq ?? 0) ? b : a));
+  const goals = (side: "Participant1" | "Participant2") =>
+    Math.max(
+      0,
+      ...events.map(
+        (e) => e.Score?.[side]?.Total?.Goals ?? e.Score?.[side]?.HT?.Goals ?? 0,
+      ),
+    );
+  const maxSecs = Math.max(0, ...events.map((e) => e.Clock?.Seconds ?? 0));
+  const anyRunning = events.some((e) => e.Clock?.Running);
+
+  return {
+    ...latest,
+    Clock: { Running: anyRunning, Seconds: maxSecs },
+    Score: {
+      Participant1: { Total: { Goals: goals("Participant1") } },
+      Participant2: { Total: { Goals: goals("Participant2") } },
+    },
+  };
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -308,6 +338,7 @@ export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
         drawPct: pt.pDraw,
         awayPct: pt.pAway,
         live: pt.live,
+        finished: pt.finished,
         oddsAvailable: true,
         history: [{ t: Date.now(), p: pt.p }],
       };
@@ -315,11 +346,14 @@ export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
     }),
   );
 
-  // live first, then soonest kickoff, then finished last
+  // live first, then soonest kickoff (upcoming before finished)
   return built
     .filter((m): m is Match => m !== null)
     .sort((a, b) => {
       if (Boolean(a.live) !== Boolean(b.live)) return Number(b.live) - Number(a.live);
+      if (Boolean(a.finished) !== Boolean(b.finished)) {
+        return Number(a.finished) - Number(b.finished);
+      }
       return (a.kickoff ?? 0) - (b.kickoff ?? 0);
     });
 }
@@ -351,12 +385,14 @@ export type MatchPoint = {
   messageId: string;
   ts: number;
   live: boolean;
+  finished: boolean;
 };
 
 // Last good reading per fixture. A partial TxLINE failure (odds OR scores) must
 // never regress the number to 0/flat — we hold the last known values instead.
 // This is what kills the "connecting/disconnecting" flap.
 const lastPoint = new Map<number, MatchPoint & { at: number }>();
+
 
 /** Latest market win probability + scoreline + live flag for one fixture. */
 export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | null> {
@@ -392,26 +428,50 @@ export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | n
   let scoreHome = prev?.scoreHome ?? 0;
   let scoreAway = prev?.scoreAway ?? 0;
   let clockRunning = false;
+  let finished = false;
   if (score) {
     const secs = score.Clock?.Seconds ?? 0;
     clockRunning = Boolean(score.Clock?.Running);
+    finished = isFinishedState(score);
     const sHome = score.Participant1IsHome ?? p1Home;
-    const p1Goals = score.Score?.Participant1?.Total?.Goals ?? 0;
-    const p2Goals = score.Score?.Participant2?.Total?.Goals ?? 0;
-    const freshMin = secs > 0 ? Math.min(120, Math.ceil(secs / 60)) : 0;
+    // prefer Total goals; fall back to summing HT if Total is absent
+    const p1Goals =
+      score.Score?.Participant1?.Total?.Goals ??
+      score.Score?.Participant1?.HT?.Goals ??
+      0;
+    const p2Goals =
+      score.Score?.Participant2?.Total?.Goals ??
+      score.Score?.Participant2?.HT?.Goals ??
+      0;
+    const freshMin = secs > 0 ? Math.min(130, Math.ceil(secs / 60)) : 0;
     if (freshMin > 0) minute = Math.max(minute, freshMin);
     // goals only ever climb within a match
     scoreHome = Math.max(scoreHome, sHome ? p1Goals : p2Goals);
     scoreAway = Math.max(scoreAway, sHome ? p2Goals : p1Goals);
   }
 
-  // --- live: the odds market is in-running, or the clock is running ---
+  // --- live vs finished ---
+  // A match is LIVE whenever the clock has started (minute > 0) or the odds are
+  // in-running — UNLESS the feed says it's finished. Driving off the minute (not
+  // just the InRunning flag) fixes matches that showed "FT" at 66'.
   const oddsLive = odds.some((o) => o.InRunning === true);
-  const live = oddsLive || (clockRunning && minute > 0);
+  const live = !finished && (minute > 0 || oddsLive || clockRunning);
 
   const point: MatchPoint = {
-    p, pDraw, pAway, minute, scoreHome, scoreAway, messageId, ts, live,
+    p, pDraw, pAway, minute, scoreHome, scoreAway, messageId, ts, live, finished,
   };
   lastPoint.set(id, { ...point, at: Date.now() });
   return point;
+}
+
+// Best-effort "match is over" detection from the scores feed. Conservative —
+// when unsure we treat it as NOT finished, so a live match never shows FT.
+function isFinishedState(score: ScoreSnapshot): boolean {
+  const gs = (score.GameState ?? "").toLowerCase();
+  if (/finish|full.?time|\bft\b|ended|after.?extra|penalt|abandon|postpon/.test(gs)) {
+    return true;
+  }
+  // Known TxLINE finished status ids (best-effort); extend as confirmed.
+  if (score.StatusId != null && [100, 110].includes(score.StatusId)) return true;
+  return false;
 }

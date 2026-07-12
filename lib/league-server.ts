@@ -31,6 +31,8 @@ export type League = {
   /** address of whoever created the table (they sent you the code) */
   host: string;
   members: Record<string, LeagueMember>;
+  /** set when the host closes the table — clients drop back to solo. */
+  dissolved?: boolean;
 };
 
 /**
@@ -274,6 +276,39 @@ export async function leaveLeague(
   await putLeague(league);
   await postToFeed(code, { kind: "event", text: `${name} left the table` });
   return league;
+}
+
+/** Host removes another member. Only the host may kick; can't kick themselves. */
+export async function kickMember(
+  code: string,
+  hostAddress: string,
+  target: string,
+): Promise<League | null> {
+  const league = await getLeague(code);
+  if (!league) return null;
+  if (league.host !== hostAddress || target === hostAddress) return league;
+  const m = league.members[target];
+  if (m) {
+    delete league.members[target];
+    await putLeague(league);
+    await postToFeed(code, { kind: "event", text: `${m.name} was removed from the table` });
+  }
+  return league;
+}
+
+/** Host closes the table for everyone. */
+export async function dissolveLeague(
+  code: string,
+  hostAddress: string,
+): Promise<boolean> {
+  const league = await getLeague(code);
+  if (!league) return true;
+  if (league.host !== hostAddress) return false;
+  league.dissolved = true;
+  league.members = {};
+  await putLeague(league);
+  await postToFeed(code, { kind: "event", text: "The host closed the table." });
+  return true;
 }
 
 // ---- synchronized rounds ----------------------------------------------------

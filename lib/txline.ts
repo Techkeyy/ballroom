@@ -48,8 +48,10 @@ export type Match = {
    * yet" state instead of a real number. Undefined/true = normal. */
   oddsAvailable?: boolean;
   history: OddsPoint[];
-  /** True only when the fixture is actually in-play (in-running odds / clock). */
+  /** True only when the fixture is actually in-play (clock started, not finished). */
   live?: boolean;
+  /** True when the match has ended. */
+  finished?: boolean;
   /** Identity of the TxLINE odds update behind `current` (live mode only) —
    * lets a resolved round anchor to a Merkle-proven oracle message. */
   marketMessageId?: string;
@@ -250,6 +252,7 @@ function subscribeRealMatch(
     scoreHome: number;
     scoreAway: number;
     live: boolean;
+    finished: boolean;
     messageId?: string;
     ts?: number;
     home: string;
@@ -277,6 +280,7 @@ function subscribeRealMatch(
         scoreHome: m.scoreHome,
         scoreAway: m.scoreAway,
         live: Boolean(m.live),
+        finished: Boolean(m.finished),
         home: m.home,
         away: m.away,
         homeCode: m.homeCode,
@@ -299,6 +303,7 @@ function subscribeRealMatch(
         scoreHome: number;
         scoreAway: number;
         live?: boolean;
+        finished?: boolean;
         messageId?: string;
         ts?: number;
       };
@@ -316,6 +321,7 @@ function subscribeRealMatch(
         scoreHome: pt.scoreHome,
         scoreAway: pt.scoreAway,
         live: Boolean(pt.live),
+        finished: Boolean(pt.finished),
         messageId: pt.messageId,
         ts: pt.ts,
         oddsAvailable: true, // a 200 response means fetchMatchPoint found a real market
@@ -364,6 +370,7 @@ function subscribeRealMatch(
       awayPct: target.pAway,
       kickoff: target.kickoff,
       live: target.live,
+      finished: target.finished,
       oddsAvailable: target.oddsAvailable,
       history: [...history],
       marketMessageId: target.messageId,

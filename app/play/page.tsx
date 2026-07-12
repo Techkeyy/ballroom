@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getLiveMatches, dataSource, type Match } from "@/lib/txline";
 import { load, leaveTable, setLeague as seatAtLeague, type Persisted } from "@/lib/store";
-import { leagueLink, leaveLeague, createLeague } from "@/lib/league";
+import { leagueLink, leaveLeague, createLeague, dissolveTable, fetchLeague } from "@/lib/league";
 import Leaderboard from "@/components/Leaderboard";
 import TableFeed from "@/components/TableFeed";
 
@@ -15,6 +15,7 @@ export default function PlayPage() {
   const [state, setState] = useState<Persisted | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [isHost, setIsHost] = useState(false);
 
   useEffect(() => {
     const s = load();
@@ -24,6 +25,27 @@ export default function PlayPage() {
     }
     setState(s);
   }, [router]);
+
+  // am I the host of the current table?
+  useEffect(() => {
+    const code = state?.leagueCode;
+    const addr = state?.player?.address;
+    if (!code || !addr) {
+      setIsHost(false);
+      return;
+    }
+    let alive = true;
+    const check = () =>
+      fetchLeague(code).then((l) => {
+        if (alive) setIsHost(Boolean(l && l.host === addr));
+      });
+    check();
+    const iv = setInterval(check, 5000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [state?.leagueCode, state?.player?.address]);
 
   async function handleLeave() {
     if (busy || !state?.leagueCode || !state.player) return;
@@ -51,6 +73,23 @@ export default function PlayPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleDissolve() {
+    if (busy || !state?.leagueCode || !state.player) return;
+    if (!window.confirm("Close this table for everyone? This can't be undone.")) return;
+    setBusy(true);
+    try {
+      await dissolveTable(state.leagueCode, state.player.address);
+      setState(leaveTable());
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // fired by the leaderboard when I've been kicked or the table was closed
+  function handleRemoved() {
+    setState(leaveTable());
   }
 
   useEffect(() => {
@@ -119,13 +158,23 @@ export default function PlayPage() {
               >
                 NEW TABLE
               </button>
-              <button
-                onClick={handleLeave}
-                disabled={busy}
-                className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-rose disabled:opacity-40"
-              >
-                LEAVE
-              </button>
+              {isHost ? (
+                <button
+                  onClick={handleDissolve}
+                  disabled={busy}
+                  className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-rose disabled:opacity-40"
+                >
+                  CLOSE TABLE
+                </button>
+              ) : (
+                <button
+                  onClick={handleLeave}
+                  disabled={busy}
+                  className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-rose disabled:opacity-40"
+                >
+                  LEAVE
+                </button>
+              )}
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2 md:items-start">
@@ -137,6 +186,7 @@ export default function PlayPage() {
               }}
               leagueCode={state.leagueCode}
               leagueName={state.league}
+              onRemoved={handleRemoved}
             />
             {state.player && (
               <TableFeed
@@ -188,7 +238,7 @@ export default function PlayPage() {
 function MatchCard({ match, index }: { match: Match; index: number }) {
   const delta = trend(match.history);
   const rising = delta >= 0;
-  const isPre = !match.live && match.minute === 0;
+  const isPre = !match.live && !match.finished;
   const kickoffLabel = isPre ? formatKickoff(match.kickoff) : null;
   const marketOpen = match.oddsAvailable !== false;
 
@@ -206,14 +256,14 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
           <span className={`eyebrow ${match.live ? "!text-gold" : ""}`}>
             {match.live
               ? `${match.minute}′ live`
-              : match.minute > 0
+              : match.finished
                 ? "full time"
                 : kickoffLabel
                   ? `kicks off ${kickoffLabel}`
                   : "pre-match"}
           </span>
         </span>
-        {(match.live || match.minute > 0) && marketOpen && (
+        {(match.live || match.finished) && marketOpen && (
           <span className="tabular font-num text-sm text-ivory-dim">
             {match.scoreHome}–{match.scoreAway}
           </span>

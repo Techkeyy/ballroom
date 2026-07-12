@@ -11,7 +11,8 @@ import TableFeed from "@/components/TableFeed";
 import { useSyncRound } from "@/components/useSyncRound";
 import { getMatch, subscribeToMatch, legValueOf, dataSource, type Match, type Leg } from "@/lib/txline";
 import { PREDICT_WINDOW_MS, scoreGuess, SHARP_BAR, nextStreak, verdict } from "@/lib/game";
-import { load, save, type Persisted } from "@/lib/store";
+import { load, save, leaveTable, type Persisted } from "@/lib/store";
+import { leaveLeague, dissolveTable, fetchLeague } from "@/lib/league";
 
 type Phase = "idle" | "locked" | "resolved";
 type Result = {
@@ -57,12 +58,44 @@ export default function MatchPage() {
   stateRef.current = state;
 
   const leagueMode = Boolean(state?.leagueCode);
+  const [tableIsHost, setTableIsHost] = useState(false);
   const player = { address: state?.player?.address ?? "", name: state?.player?.name ?? "" };
   const meta = {
     home: match?.home ?? "",
     away: match?.away ?? "",
     homeCode: match?.homeCode ?? "",
   };
+
+  // am I the host of this table?
+  useEffect(() => {
+    const code = state?.leagueCode;
+    const addr = state?.player?.address;
+    if (!code || !addr) {
+      setTableIsHost(false);
+      return;
+    }
+    let alive = true;
+    fetchLeague(code).then((l) => {
+      if (alive) setTableIsHost(Boolean(l && l.host === addr));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [state?.leagueCode, state?.player?.address]);
+
+  async function handleLeave() {
+    const s = stateRef.current;
+    if (!s?.leagueCode || !s.player) return;
+    await leaveLeague(s.leagueCode, s.player.address);
+    setState(leaveTable());
+  }
+  async function handleDissolve() {
+    const s = stateRef.current;
+    if (!s?.leagueCode || !s.player) return;
+    if (!window.confirm("Close this table for everyone? This can't be undone.")) return;
+    await dissolveTable(s.leagueCode, s.player.address);
+    setState(leaveTable());
+  }
 
   // league engine (no-ops when leagueCode is null)
   const sync = useSyncRound(state?.leagueCode ?? null, matchId, meta, player);
@@ -277,7 +310,7 @@ export default function MatchPage() {
       ? "SIM"
       : isLive
         ? "LIVE"
-        : match.minute > 0
+        : match.finished
           ? "FT"
           : "PRE";
 
@@ -502,7 +535,28 @@ export default function MatchPage() {
             leagueName={state.league}
             highlightDelta={uiPhase === "resolved" ? uiResult?.points : undefined}
             refreshKey={uiPhase === "resolved" ? 1 : 0}
+            onRemoved={() => setState(leaveTable())}
           />
+
+          {leagueMode && state.leagueCode && (
+            <div className="flex justify-end gap-4">
+              {tableIsHost ? (
+                <button
+                  onClick={handleDissolve}
+                  className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-rose"
+                >
+                  CLOSE TABLE
+                </button>
+              ) : (
+                <button
+                  onClick={handleLeave}
+                  className="font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-rose"
+                >
+                  LEAVE TABLE
+                </button>
+              )}
+            </div>
+          )}
 
           {leagueMode && state.leagueCode && (
             <TableFeed
