@@ -4,11 +4,13 @@
  * score you against the real humans at your table (see lib/league-server.ts).
  */
 
-// The round clock. 45s barely lets the market move; ~90s gives real movement
-// while still resolving fast enough to stay punchy. Tunable via env for
-// demo (shorter) vs live play (longer). See ROADMAP for per-round-type windows.
+// The round clock. In live football the market barely moves over ~90s, so a
+// 5-minute window gives a real event (chance, corner, momentum swing) time to
+// shift the odds — that's where football IQ pays off. Env-configurable so a
+// demo can drop it to ~60s (NEXT_PUBLIC_ROUND_SECONDS=60) for recording.
+// The real answer is per-round-type windows (goal aftershock) — see ROADMAP.
 export const PREDICT_WINDOW_MS =
-  Number(process.env.NEXT_PUBLIC_ROUND_SECONDS ?? 90) * 1000;
+  Number(process.env.NEXT_PUBLIC_ROUND_SECONDS ?? 300) * 1000;
 
 /** A round score at/above this is "sharp" — keeps a solo streak alive. */
 export const SHARP_BAR = 50;

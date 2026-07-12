@@ -4,6 +4,7 @@ import {
   Space_Grotesk,
   Inter,
   IBM_Plex_Mono,
+  Anton,
 } from "next/font/google";
 import "./globals.css";
 import SolanaProvider from "@/components/SolanaProvider";
@@ -30,6 +31,12 @@ const plexMono = IBM_Plex_Mono({
   weight: ["400", "500"],
   variable: "--font-mono",
 });
+// Athletic poster wordmark — heavy condensed impact face (used for "Ball Room" only).
+const anton = Anton({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-wordmark",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -48,7 +55,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${serif.variable} ${grotesk.variable} ${inter.variable} ${plexMono.variable}`}
+      className={`${serif.variable} ${grotesk.variable} ${inter.variable} ${plexMono.variable} ${anton.variable}`}
     >
       <body className="parquet font-sans text-ivory antialiased">
         <SolanaProvider>

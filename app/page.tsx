@@ -62,28 +62,6 @@ export default function Home() {
 
   return (
     <main>
-      {/* ===== TOP NAV — thin bar over the hero ===== */}
-      <nav className="absolute inset-x-0 top-0 z-30">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5 md:px-10">
-          <button
-            onClick={() => scrollToId("top")}
-            className="font-mono text-[12px] font-medium uppercase tracking-[0.28em] text-ivory"
-          >
-            Ball Room
-          </button>
-          <div className="hidden items-center gap-8 md:flex">
-            <NavLink onClick={() => scrollToId("how")}>How it works</NavLink>
-            {player && <NavLink onClick={() => router.push("/play")}>Today&apos;s card</NavLink>}
-            <NavLink onClick={() => scrollToId("enter")}>
-              {player ? "Your table" : "Take a seat"}
-            </NavLink>
-          </div>
-          <button onClick={primaryCta} className="btn btn-primary px-5 py-2.5">
-            {player ? "Enter" : "Play"}
-          </button>
-        </div>
-      </nav>
-
       {/* ===== HERO ===== */}
       <section id="top" className="relative min-h-[100svh] w-full overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -114,9 +92,9 @@ export default function Home() {
             <p className="eyebrow" style={{ textShadow: "0 1px 16px rgba(0,0,0,0.9)" }}>
               World Cup · Powered by TxLINE
             </p>
-            <h1 className="mt-4 font-display font-semibold uppercase leading-[0.82] tracking-tight text-ivory">
-              <span className="block text-[64px] md:text-[128px]">Ball</span>
-              <span className="block text-[64px] text-gold md:text-[128px]">Room</span>
+            <h1 className="wordmark mt-4 leading-[0.8] text-ivory">
+              <span className="block text-[68px] md:text-[136px]">Ball</span>
+              <span className="block text-[68px] text-gold md:text-[136px]">Room</span>
             </h1>
             <p className="mt-6 max-w-md text-[16px] leading-relaxed text-ivory-dim md:text-[18px]">
               Read the market, not the match. Race your friends to call where the
@@ -266,16 +244,6 @@ export default function Home() {
   );
 }
 
-function NavLink({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className="font-mono text-[11px] uppercase tracking-[0.18em] text-ivory-dim transition-colors hover:text-gold"
-    >
-      {children}
-    </button>
-  );
-}
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (

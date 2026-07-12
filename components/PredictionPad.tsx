@@ -6,6 +6,24 @@
 
 import { PREDICT_WINDOW_MS } from "@/lib/game";
 
+/** "5 min", "90s" — the round length, read naturally. */
+function formatWindow(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s % 60 === 0 && s >= 120) return `${s / 60} min`;
+  if (s >= 120) return `${Math.round(s / 60)} min`;
+  return `${s}s`;
+}
+
+/** "4:12" for long windows, "38S" for short ones. */
+function formatCountdown(secs: number): string {
+  if (secs >= 100) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  return `${secs}S`;
+}
+
 export default function PredictionPad({
   current,
   guess,
@@ -27,7 +45,8 @@ export default function PredictionPad({
   legLabel?: string;
 }) {
   const secs = Math.ceil(msLeft / 1000);
-  const windowSecs = Math.round(PREDICT_WINDOW_MS / 1000);
+  const windowLabel = formatWindow(PREDICT_WINDOW_MS);
+  const countdown = formatCountdown(secs);
   const delta = Math.round((guess - current) * 10) / 10;
 
   if (locked) {
@@ -49,7 +68,7 @@ export default function PredictionPad({
           />
         </div>
         <p className="tabular mt-3 font-mono text-[12px] tracking-[0.12em] text-ivory-dim">
-          RESOLVES IN {secs}S — WATCH THE THREAD
+          RESOLVES IN {countdown} — WATCH THE THREAD
         </p>
       </div>
     );
@@ -60,8 +79,8 @@ export default function PredictionPad({
       <div className="mb-4 flex items-baseline justify-between">
         <p className="eyebrow">
           {legLabel
-            ? `${legLabel === "DRAW" ? "Draw" : `${legLabel} win`} % in ${windowSecs}s`
-            : `The market in ${windowSecs}s`}
+            ? `${legLabel === "DRAW" ? "Draw" : `${legLabel} win`} % in ${windowLabel}`
+            : `The market in ${windowLabel}`}
         </p>
         <p className="tabular font-mono text-[11px] tracking-[0.12em] text-ivory-faint">
           now {current}
