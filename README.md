@@ -1,25 +1,36 @@
-# Ball Room 🕺⚽
+# Ball Room
 
-**Read the market, not the match.** Race your friends to call where the live odds move next.
+**Read the market, not the match.** Race your friends to call where the live World Cup odds move next — free to play, skill only, nothing staked.
 
-A World Cup fan game for the **TxODDS "Consumer and Fan Experiences"** track on Superteam Earn. Sign in with Solana, pick a live match, and guess where the betting market moves in the next 45 seconds. Closest to the pin wins. No money staked — pure skill.
+**Live app:** https://ballroom-eight.vercel.app · **Demo video:** _coming with submission_
 
-> Betting sites constantly move the odds during a match. Ball Room doesn't let you bet — it turns *reading those moves* into a game against your mates.
+Built for the **TxODDS "Consumer and Fan Experiences"** World Cup track on [Superteam Earn](https://earn.superteam.fun). Powered by [TxLINE](https://txline.txodds.com) real-time consensus odds, signed in with Solana.
 
-## Why it's different
+> Betting sites move their odds every few seconds during a live match. Ball Room doesn't let you bet — it turns *reading those moves* into a synchronized game against your friends. You're not predicting the game; you're predicting how the market reacts to it.
 
-Nobody has made **the market's mind** the object of play. You're not predicting the game — you're predicting how the bookmakers react to it, second by second. That's impossible to build without a live-odds provider, which is exactly what **TxLINE** is. The odds feed isn't decoration here; it's the entire game.
+## Features
 
-## The loop
+- **Live market gameplay** — real-time TxLINE mainnet odds (Fixtures, Odds, Scores); pick any leg of the 3-way market (home / draw / away) and call where it lands when the round clock runs out. Closest to the pin scores most.
+- **Synchronized tables (leagues)** — server-authoritative rounds: one shared clock per table, everyone calls the same number, the server reads the live market at open and resolve and ranks the humans. No client can fake it.
+- **Invite links & join by code** — open a table, share `/join/CODE` or the 5-char code itself. Hosts are tagged, can kick members or close the table; members can leave anytime.
+- **Table talk** — a game-aware feed per table: auto-events ("Ada opened the table", "Ben is in for this round", round winners + streaks) plus short messages and emoji reactions. Members only.
+- **Receipts, provable on Solana** — every resolved call becomes a shareable receipt page with an OG-image "gold ticket" unfurl. Live-mode receipts carry the TxLINE **Merkle validation proof** (batch root committed on-chain by the TxODDS oracle) and a `/verify` endpoint that re-attests the numbers against the oracle.
+- **Solana sign-in that's load-bearing** — the wallet isn't decoration: activating TxLINE's free World Cup tier *is* an on-chain `subscribe` transaction. One wallet action = sign-up + data unlock. Guest mode exists for wallet-less judges.
+- **Resilient live data** — retrying reads, last-good caching, minute-driven live/FT detection, and a decoupled render loop so the odds chart glides even when the upstream feed is lumpy.
+
+## How a round works
 
 ```
-invite → sign in with Solana → join your league
-  → pick a live match → guess where the odds move next → lock it
-  → watch it resolve live → score by closeness → streak + leaderboard
-  → share the brag → repeat
+sign in (Solana wallet or guest) → open/join a table
+  → pick today's match → choose a leg (NOR / DRAW / ENG)
+  → call where that % sits when the clock runs out → lock it
+  → watch the live thread → server resolves & ranks the table
+  → streaks, points, receipt → share the brag → go again
 ```
 
-## Run it
+Round window defaults to **5 minutes** (`NEXT_PUBLIC_ROUND_SECONDS`, drop to `60` for demos).
+
+## Quick start
 
 ```bash
 npm install
@@ -27,35 +38,84 @@ npm run dev
 # open http://localhost:3000
 ```
 
-Runs in **simulator mode** by default (`NEXT_PUBLIC_TXLINE_MOCK=true`) — a realistic random-walk odds model with goal shocks, so the whole game is playable with **no API key and no live match**. That's also what makes the demo bulletproof: it works identically whether or not a match is live during judging.
+Out of the box this runs in **simulator mode** (`NEXT_PUBLIC_TXLINE_MOCK=true`) — a realistic random-walk market with goal shocks, so the full game is playable with no API token and no live match.
 
-To go live, copy `.env.example` → `.env.local`, set `NEXT_PUBLIC_TXLINE_MOCK=false`, add your `TXLINE_API_KEY`, and wire the two TODOs in [`lib/txline.ts`](lib/txline.ts) (`fetchRealMatches` / `subscribeRealMatch`) to the World Cup Fixtures / Odds / Scores endpoints.
+### Going live (real TxLINE data)
 
-## Stack
+TxLINE's free World Cup tier is activated **on-chain**. The repo ships a self-service script:
 
-- **Next.js 14** (App Router, TypeScript)
-- **Tailwind CSS** — dark editorial pitch theme
-- **Hand-rolled SVG** heartbeat chart (no chart deps)
-- **localStorage** player/league store (swap for a backend at M4)
-- **Solana** wallet sign-in (stubbed at M3-ready seam in `WalletButton` / `store.ts`)
+```bash
+# devnet (free SOL via faucet; 60s-delayed data)
+node scripts/activate-freetier.mjs --network devnet --level 1
 
-## Layout
+# mainnet (needs ~0.003 SOL for fees; real-time data)
+node scripts/activate-freetier.mjs --network mainnet --level 12
+```
+
+The script creates/loads a keypair, sends the `subscribe` transaction to the txoracle program, signs the activation message, and writes `TXLINE_API_TOKEN` + `TXLINE_BASE_URL` into `.env.local` with `NEXT_PUBLIC_TXLINE_MOCK=false`. Restart the dev server and the app is on live data.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_TXLINE_MOCK` | `true` | `true` = simulator, `false` = real TxLINE |
+| `TXLINE_BASE_URL` | mainnet API | TxLINE host (devnet: `txline-dev.txodds.com/api`) |
+| `TXLINE_API_TOKEN` | — | from on-chain activation (script above) |
+| `TXLINE_COMPETITION_ID` | `72` | World Cup competition id |
+| `NEXT_PUBLIC_ROUND_SECONDS` | `300` | round clock length |
+| `NEXT_PUBLIC_SOLANA_RPC` | devnet | RPC for wallet flows |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | — | Vercel KV (auto-injected when connected); in-memory fallback in dev |
+
+**Production note:** tables, rounds, feed and receipts persist via **Vercel KV** — connect a KV store in the Vercel dashboard or multiplayer state won't survive across serverless invocations.
+
+## Project structure
 
 ```
 app/
-  page.tsx                landing / invite / sign-in
-  play/page.tsx           live matches
-  play/[matchId]/page.tsx the game
+  page.tsx                    landing (hero, sign-in, join-by-code)
+  play/page.tsx               today's card + your table (leaderboard, feed, host controls)
+  play/[matchId]/page.tsx     the game: live number, 3-way legs, heartbeat chart, rounds
+  join/[code]/page.tsx        invite landing (names the host, seats you)
+  r/[id]/page.tsx             public receipt page (+ opengraph-image gold ticket)
+  api/txline/*                matches / match / jwt / activate — server-side TxLINE proxy
+  api/league/*                create / get / round / feed / kick / leave / dissolve
+  api/receipt/*               create + verify (oracle re-attestation)
+  api/health                  storage & data-source diagnostics
 lib/
-  txline.ts   data adapter (simulator + real TxLINE seam)
-  game.ts     scoring, streaks, synthetic crowd
-  store.ts    player/league persistence
+  txline-server.ts            TxLINE integration (auth, odds/scores mapping, resilience)
+  txline.ts                   client adapter: simulator + live subscription (snake chart)
+  txline-chain.ts / txline-activate.ts   on-chain subscribe + activation flows
+  league-server.ts / league.ts           tables, synchronized rounds, feed
+  receipts-server.ts          receipts + Merkle proof storage
+  game.ts / store.ts          scoring, streaks, local identity
 components/
-  Heartbeat · PredictionPad · Leaderboard · ShareCard · WalletButton
+  Heartbeat · PredictionPad · Leaderboard · TableFeed · ShareCard
+  WalletButton · SolanaProvider · MusicToggle · AmbientBackdrop
+scripts/
+  activate-freetier.mjs       self-service on-chain TxLINE activation
 ```
 
-See [`BUILD_PLAN.md`](BUILD_PLAN.md) for milestones, endpoint mapping, and the judging-criteria breakdown.
+## Stack
+
+**Next.js 14** (App Router, TypeScript) · **Tailwind CSS** · **@solana/web3.js + wallet-adapter** · **Vercel KV** · hand-rolled SVG charting · Web-Audio generative score (no audio assets)
+
+## Documentation
+
+- [`DOCS.md`](DOCS.md) — core idea, TxLINE endpoints used, technical & business highlights
+- [`TXLINE_FEEDBACK.md`](TXLINE_FEEDBACK.md) — real integration feedback for the TxODDS team
+- [`ROADMAP.md`](ROADMAP.md) — what's shipped, what's next, judged against the track criteria
+- [`BUILD_PLAN.md`](BUILD_PLAN.md) — original architecture plan (historical)
+
+## Hackathon compliance
+
+| Requirement | Status |
+|---|---|
+| Live product working during a match | ✅ mainnet real-time, verified on live World Cup games |
+| TxLINE as a live input | ✅ Fixtures + Odds + Scores + Validation Proofs |
+| Sign up through Solana | ✅ wallet sign-in; TxLINE activation is an on-chain subscribe |
+| Deployed link | ✅ ballroom-eight.vercel.app |
+| Functional, not a mockup | ✅ full multiplayer loop, verified end-to-end |
 
 ## Guardrails
 
-Free-to-play · skill-based · closest-to-the-pin · **no wagering, no money staked.** Deliberately small scope, executed end-to-end.
+Free-to-play · skill-based · closest-to-the-pin scoring · **no wagering, no money staked, ever.** All art and audio are original or IP-safe.
