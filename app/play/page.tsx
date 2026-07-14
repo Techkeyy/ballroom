@@ -8,6 +8,7 @@ import { load, leaveTable, setLeague as seatAtLeague, type Persisted } from "@/l
 import { leagueLink, leaveLeague, createLeague, dissolveTable, fetchLeague } from "@/lib/league";
 import Leaderboard from "@/components/Leaderboard";
 import TableFeed from "@/components/TableFeed";
+import Flag from "@/components/Flag";
 
 export default function PlayPage() {
   const router = useRouter();
@@ -289,12 +290,14 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
       </div>
 
       <div className="flex items-end justify-between gap-4">
-        <div className="min-w-0">
-          <p className="truncate font-display text-[23px] font-semibold leading-tight text-ivory">
-            {match.home}
+        <div className="min-w-0 space-y-1">
+          <p className="flex items-center gap-2.5 font-display text-[23px] font-semibold leading-tight text-ivory">
+            <Flag code={match.homeCode} />
+            <span className="truncate">{match.home}</span>
           </p>
-          <p className="truncate font-display text-[23px] font-semibold leading-tight text-ivory-dim">
-            {match.away}
+          <p className="flex items-center gap-2.5 font-display text-[23px] font-semibold leading-tight text-ivory-dim">
+            <Flag code={match.awayCode} />
+            <span className="truncate">{match.away}</span>
           </p>
         </div>
         <div className="shrink-0 text-right">

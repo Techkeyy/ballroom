@@ -14,12 +14,12 @@ Built for the **TxODDS "Consumer and Fan Experiences"** World Cup track on [Supe
 - **Skill-based scoring** — you're scored on how well you read the *move*, not raw closeness: calls are measured against the naive "no-change" baseline, so echoing the current number scores near zero while nailing a real swing pays big. Streaks require clearing a real bar *and* beating the table.
 - **Goal-aftershock rounds** — when a goal drops, the slow round is swept aside for a short 60-second "where does the market settle?" round (banner + a "GOAL — market repricing" feed event). The market is *guaranteed* to be moving — the loudest moment of the match becomes the highest-stakes round.
 - **Synchronized tables (leagues)** — server-authoritative rounds: one shared clock per table, everyone calls the same number, the server reads the live market at open and resolve and ranks the humans. No client can fake it.
-- **Full fixtures card** — live matches pinned up top, then upcoming fixtures grouped by day (Today / Tomorrow / dated) with kickoff times, so there's always something to open even between matchdays.
+- **Full fixtures card** — live matches pinned up top with national-flag chips (hand-drawn inline SVG, zero image assets), upcoming fixtures grouped by day (Today / Tomorrow / dated) with kickoff times, and finished matches showing their full-time score — always something honest on the card, even between matchdays.
 - **Invite links & join by code** — open a table, share `/join/CODE` or the 5-char code itself. Hosts are tagged, can kick members or close the table; members can leave anytime.
 - **Table talk** — a game-aware feed per table: auto-events ("Ada opened the table", "Ben is in for this round", round winners + streaks) plus short messages and emoji reactions. Members only.
 - **Receipts, provable on Solana** — every resolved call becomes a shareable receipt page with an OG-image "gold ticket" unfurl. Live-mode receipts carry the TxLINE **Merkle validation proof** (batch root committed on-chain by the TxODDS oracle) and a `/verify` endpoint that re-attests the numbers against the oracle.
 - **Solana sign-in that's load-bearing** — the wallet isn't decoration: activating TxLINE's free World Cup tier *is* an on-chain `subscribe` transaction. One wallet action = sign-up + data unlock. Guest mode exists for wallet-less judges.
-- **Resilient live data** — retrying reads, last-good caching, minute-driven live/FT detection, and a decoupled render loop so the odds chart glides even when the upstream feed is lumpy.
+- **Resilient live data** — retrying reads, last-good caching, and a decoupled render loop so the odds chart glides even when the upstream feed is lumpy. **Score-first reads**: the scores feed owns match state, the odds feed owns the number, and each survives the other's absence — TxLINE pulls the odds entirely at full time, and goal totals follow the latest correction (a VAR-disallowed goal un-counts) instead of a naive running max.
 
 ## How a round works
 
@@ -92,10 +92,11 @@ lib/
   receipts-server.ts          receipts + Merkle proof storage
   game.ts / store.ts          scoring, streaks, local identity
 components/
-  Heartbeat · PredictionPad · Leaderboard · TableFeed · ShareCard
+  Heartbeat · PredictionPad · Leaderboard · TableFeed · ShareCard · Flag
   WalletButton · SolanaProvider · MusicToggle · AmbientBackdrop
 scripts/
   activate-freetier.mjs       self-service on-chain TxLINE activation
+  probe-live.mjs              raw-feed diagnostic (compare TxLINE vs our API)
 ```
 
 ## Stack

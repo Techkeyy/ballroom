@@ -9,6 +9,7 @@ import Leaderboard from "@/components/Leaderboard";
 import ShareCard from "@/components/ShareCard";
 import TableFeed from "@/components/TableFeed";
 import { useSyncRound } from "@/components/useSyncRound";
+import Flag from "@/components/Flag";
 import { getMatch, subscribeToMatch, legValueOf, dataSource, type Match, type Leg } from "@/lib/txline";
 import { PREDICT_WINDOW_MS, scoreCall, SHARP_BAR, nextStreak, verdict } from "@/lib/game";
 import { load, save, leaveTable, type Persisted } from "@/lib/store";
@@ -418,10 +419,16 @@ export default function MatchPage() {
         {/* LEFT: the market */}
         <div>
           <div className="mb-6 text-center md:text-left">
-            <p className="font-display text-[30px] font-semibold leading-tight text-ivory">
-              {match.home}{" "}
-              <span className="italic font-normal text-ivory-faint">v</span>{" "}
-              {match.away}
+            <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-display text-[30px] font-semibold leading-tight text-ivory md:justify-start">
+              <span className="inline-flex items-center gap-2.5">
+                <Flag code={match.homeCode} className="!h-[19px] !w-[28px]" />
+                {match.home}
+              </span>
+              <span className="font-normal italic text-ivory-faint">v</span>
+              <span className="inline-flex items-center gap-2.5">
+                <Flag code={match.awayCode} className="!h-[19px] !w-[28px]" />
+                {match.away}
+              </span>
             </p>
             {marketOpen ? (
               <>
