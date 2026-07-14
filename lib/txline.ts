@@ -43,10 +43,14 @@ export type Match = {
   awayPct?: number;
   /** Kickoff time, epoch ms — set for every fixture, used to show "kicks off HH:MM" pre-match. */
   kickoff?: number;
-  /** False when TxLINE hasn't published a market for this fixture yet (common
-   * many hours before kickoff). The fixture still shows — with a "not open
-   * yet" state instead of a real number. Undefined/true = normal. */
+  /** False when TxLINE has no market for this fixture right now — either not
+   * published yet (hours before kickoff) or pulled at full time. The fixture
+   * still shows — without a market number. Undefined/true = normal. */
   oddsAvailable?: boolean;
+  /** False when we have no scores-feed reading for this fixture (pure-future
+   * fixtures, or both feeds empty) — the scoreline is a placeholder then.
+   * Undefined/true = the scoreline is real. */
+  hasScore?: boolean;
   history: OddsPoint[];
   /** True only when the fixture is actually in-play (clock started, not finished). */
   live?: boolean;
@@ -304,6 +308,7 @@ function subscribeRealMatch(
         scoreAway: number;
         live?: boolean;
         finished?: boolean;
+        hasOdds?: boolean;
         messageId?: string;
         ts?: number;
       };
@@ -324,7 +329,8 @@ function subscribeRealMatch(
         finished: Boolean(pt.finished),
         messageId: pt.messageId,
         ts: pt.ts,
-        oddsAvailable: true, // a 200 response means fetchMatchPoint found a real market
+        // a 200 can be a score-only read (market pulled at FT) — trust hasOdds
+        oddsAvailable: pt.hasOdds !== false,
       };
     } catch {
       /* hold last target — the server already holds last-good */

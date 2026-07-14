@@ -249,16 +249,27 @@ async function fetchScoreFor(fixtureId: number): Promise<ScoreSnapshot | null> {
   if (!events.length) return null;
 
   // The snapshot is a stream of event messages (some are "discarded" and carry
-  // no score). Aggregate the truth: goals & clock only ever climb, so take the
-  // max across all events; use the newest event for status/orientation.
+  // no score). Use the newest event for status/orientation; for GOALS, the
+  // latest event that actually carries a goals reading wins — NOT the max
+  // across events. TxLINE issues corrections: fixture 18237038 recorded a
+  // Spain goal (total 3 at Seq 638), then VAR-disallowed it (total back to 2
+  // from Seq 844) — a max keeps the phantom goal forever, while
+  // latest-carrying-event follows the correction. Skipping goal-less events
+  // preserves the old max's protection against "score stuck at 0-0".
   const latest = events.reduce((a, b) => ((b.Seq ?? 0) > (a.Seq ?? 0) ? b : a));
-  const goals = (side: "Participant1" | "Participant2") =>
-    Math.max(
-      0,
-      ...events.map(
-        (e) => e.Score?.[side]?.Total?.Goals ?? e.Score?.[side]?.HT?.Goals ?? 0,
-      ),
-    );
+  const goals = (side: "Participant1" | "Participant2"): number | undefined => {
+    let best: number | undefined;
+    let bestSeq = -1;
+    for (const e of events) {
+      const g = e.Score?.[side]?.Total?.Goals ?? e.Score?.[side]?.HT?.Goals;
+      if (g != null && (e.Seq ?? 0) >= bestSeq) {
+        best = g;
+        bestSeq = e.Seq ?? 0;
+      }
+    }
+    return best; // undefined = no goals reading anywhere in the stream
+  };
+  // clock seconds DO only climb (they reset to 0 in the FT event, so max is right)
   const maxSecs = Math.max(0, ...events.map((e) => e.Clock?.Seconds ?? 0));
   const anyRunning = events.some((e) => e.Clock?.Running);
 
@@ -293,6 +304,7 @@ function todayWindowUTC(tzOffsetMin: number): { start: number; end: number } {
 // period doesn't show a wall of "odds not open yet" cards.
 const HORIZON_DAYS = Number(process.env.TXLINE_HORIZON_DAYS ?? "5");
 const LIVE_LOOKBACK_MS = 3.5 * 60 * 60 * 1000; // a match kicked off this recently could still be live
+const FT_INFER_MS = 2.75 * 60 * 60 * 1000; // kicked off this long ago + no data → treat as over
 
 /** World Cup fixtures: live now, today, and the next few days — with market
  *  numbers for the ones actually in play, kickoff times for the rest. */
@@ -334,8 +346,11 @@ export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
         kickoff: f.StartTime,
       };
 
-      // no market posted yet (future fixture, or odds not up) — list it anyway
+      // no data at all (future fixture, or both feeds empty) — list it anyway.
+      // If kickoff was hours ago, the honest label is "full time", not
+      // "pre-match": a match this old with no feed is over, not upcoming.
       if (!pt) {
+        const longOver = now - f.StartTime > FT_INFER_MS;
         const match: Match = {
           ...base,
           minute: 0,
@@ -345,8 +360,9 @@ export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
           drawPct: 0,
           awayPct: 0,
           live: false,
-          finished: false,
+          finished: longOver,
           oddsAvailable: false,
+          hasScore: false,
           history: [],
         };
         return match;
@@ -362,7 +378,8 @@ export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
         awayPct: pt.pAway,
         live: pt.live,
         finished: pt.finished,
-        oddsAvailable: true,
+        oddsAvailable: pt.hasOdds,
+        hasScore: true,
         history: [{ t: Date.now(), p: pt.p }],
       };
       return match;
@@ -409,6 +426,10 @@ export type MatchPoint = {
   ts: number;
   live: boolean;
   finished: boolean;
+  /** False when no live odds are known (TxLINE pulls the market at FT, and a
+   * cold process has no held reading). p/pDraw/pAway are placeholders then —
+   * the scores half (minute/score/live/finished) is still authoritative. */
+  hasOdds: boolean;
 };
 
 // Last good reading per fixture. A partial TxLINE failure (odds OR scores) must
@@ -445,6 +466,7 @@ export function seedDemoMarket(fixtureId: string) {
     ts: Date.now(),
     live: true,
     finished: false,
+    hasOdds: true,
     at: Date.now(),
   });
 }
@@ -459,7 +481,17 @@ export function markGoalForTest(fixtureId: string): { bump: number } {
 }
 
 
-/** Latest market win probability + scoreline + live flag for one fixture. */
+/**
+ * Latest market win probability + scoreline + live flag for one fixture.
+ *
+ * SCORE-FIRST by design: the scores feed is the authority on match state
+ * (live / finished / scoreline) and the odds feed on the market number — and
+ * each must survive the other's absence. TxLINE PULLS THE ODDS ENTIRELY at
+ * full time (0 records), so odds are optional here: a score-only read still
+ * returns a point (hasOdds=false, placeholder odds). Returning null just
+ * because odds were missing is exactly what made finished matches render as
+ * "pre-match" on every fresh process. Null now means "no data at all".
+ */
 export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | null> {
   const id = Number(fixtureId);
   const [odds, score, p1Home] = await Promise.all([
@@ -470,7 +502,10 @@ export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | n
   const prev = lastPoint.get(id) ?? demoSeed.get(id);
   const pcts = participantPcts(odds);
 
-  // --- odds: use fresh, else hold last good ---
+  if (!pcts && !score && !prev) return null; // literally nothing to say
+
+  // --- odds: fresh → held → placeholder (score alone still carries the read) ---
+  let hasOdds = true;
   let p: number, pDraw: number, pAway: number, messageId: string, ts: number;
   if (pcts) {
     p = p1Home ? pcts.part1 : pcts.part2;
@@ -478,14 +513,19 @@ export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | n
     pDraw = pcts.draw;
     messageId = pcts.messageId;
     ts = pcts.ts;
-  } else if (prev) {
+  } else if (prev && prev.hasOdds !== false) {
     p = prev.p;
     pDraw = prev.pDraw;
     pAway = prev.pAway;
     messageId = prev.messageId;
     ts = prev.ts;
   } else {
-    return null; // never had a reading
+    hasOdds = false;
+    p = 50;
+    pDraw = 25;
+    pAway = 25;
+    messageId = "";
+    ts = 0;
   }
 
   // --- score/minute: use fresh, else hold; never run backwards ---
@@ -493,26 +533,24 @@ export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | n
   let scoreHome = prev?.scoreHome ?? 0;
   let scoreAway = prev?.scoreAway ?? 0;
   let clockRunning = false;
-  let finished = false;
+  // matches never un-finish — hold it across transient score misses, or a
+  // finished match would flap back to "live" for a tick
+  let finished = prev?.finished ?? false;
   if (score) {
     const secs = score.Clock?.Seconds ?? 0;
     clockRunning = Boolean(score.Clock?.Running);
-    finished = isFinishedState(score);
+    finished = finished || isFinishedState(score); // monotonic: never un-finish
     const sHome = score.Participant1IsHome ?? p1Home;
-    // prefer Total goals; fall back to summing HT if Total is absent
-    const p1Goals =
-      score.Score?.Participant1?.Total?.Goals ??
-      score.Score?.Participant1?.HT?.Goals ??
-      0;
-    const p2Goals =
-      score.Score?.Participant2?.Total?.Goals ??
-      score.Score?.Participant2?.HT?.Goals ??
-      0;
+    // aggregated by fetchScoreFor: latest goals-carrying event (follows VAR
+    // corrections); undefined = the stream had no goals reading at all
+    const p1Goals = score.Score?.Participant1?.Total?.Goals;
+    const p2Goals = score.Score?.Participant2?.Total?.Goals;
     const freshMin = secs > 0 ? Math.min(130, Math.ceil(secs / 60)) : 0;
     if (freshMin > 0) minute = Math.max(minute, freshMin);
-    // goals only ever climb within a match
-    scoreHome = Math.max(scoreHome, sHome ? p1Goals : p2Goals);
-    scoreAway = Math.max(scoreAway, sHome ? p2Goals : p1Goals);
+    // a fresh reading REPLACES (goals can go down — disallowed goals);
+    // no reading at all → hold the previous value
+    scoreHome = (sHome ? p1Goals : p2Goals) ?? scoreHome;
+    scoreAway = (sHome ? p2Goals : p1Goals) ?? scoreAway;
   }
 
   // --- live vs finished ---
@@ -525,6 +563,7 @@ export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | n
   // store the REAL reading (no demo bump — avoids compounding on the next read)
   const point: MatchPoint = {
     p, pDraw, pAway, minute, scoreHome, scoreAway, messageId, ts, live, finished,
+    hasOdds,
   };
   lastPoint.set(id, { ...point, at: Date.now() });
 

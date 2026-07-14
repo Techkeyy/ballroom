@@ -362,7 +362,10 @@ async function resolveRound(code: string, round: LeagueRound): Promise<LeagueRou
   if (round.resolved) return round;
 
   const market = await readMarket(round.matchId);
-  const actual = market ? legValue(market, round.leg) : round.startProb; // degrade to flat if unread
+  // Only score against REAL odds — a score-only read (market pulled at FT)
+  // carries placeholder numbers that must never become "actual".
+  const actual =
+    market && market.hasOdds ? legValue(market, round.leg) : round.startProb; // degrade to flat if unread
   round.actual = actual;
   if (market) {
     round.minute = market.minute;
@@ -481,7 +484,9 @@ export async function getOrOpenRound(
     return round;
   }
 
-  if (!market) return round ?? null; // can't open without the market
+  // Can't open a round without a live market: no read, market closed at full
+  // time, or a score-only read (odds pulled) — calls need a real number.
+  if (!market || !market.hasOdds || market.finished) return round ?? null;
 
   // aftershock when a goal is owed (a first-ever round for the table isn't one).
   const isAftershock = round != null && wantsAftershock;

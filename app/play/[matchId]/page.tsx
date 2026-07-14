@@ -465,6 +465,19 @@ export default function MatchPage() {
                   </>
                 )}
               </>
+            ) : match.finished ? (
+              <div className="mt-2">
+                <p className="eyebrow">Full time</p>
+                {match.hasScore !== false && (
+                  <p className="tabular mt-3 font-num text-[56px] font-light leading-none text-gold">
+                    {match.scoreHome}–{match.scoreAway}
+                  </p>
+                )}
+                <p className="mt-3 max-w-sm text-[14px] leading-relaxed text-ivory-dim">
+                  The market has closed — TxLINE pulls the odds at the whistle.
+                  Pick another fixture from the card.
+                </p>
+              </div>
             ) : (
               <div className="mt-2">
                 <p className="eyebrow">
@@ -499,14 +512,8 @@ export default function MatchPage() {
 
         {/* RIGHT: play + table */}
         <div className="space-y-6">
-          {!marketOpen ? (
-            <div className="panel-strong p-6 text-center">
-              <p className="font-display text-lg italic text-ivory-dim">
-                The table isn&apos;t set yet.
-              </p>
-              <p className="eyebrow mt-2">Odds open closer to kickoff</p>
-            </div>
-          ) : uiPhase === "resolved" && uiResult ? (
+          {uiPhase === "resolved" && uiResult ? (
+            // a just-resolved round stays shareable, even past the whistle
             <ShareCard
               match={match}
               startProb={uiResult.startProb}
@@ -521,6 +528,20 @@ export default function MatchPage() {
               receiptId={receiptId}
               onPlayAgain={leagueMode ? sync.playAgain : playAgainSolo}
             />
+          ) : match.finished ? (
+            <div className="panel-strong p-6 text-center">
+              <p className="font-display text-lg italic text-ivory-dim">
+                Full time — the market has closed.
+              </p>
+              <p className="eyebrow mt-2">No more calls on this one</p>
+            </div>
+          ) : !marketOpen ? (
+            <div className="panel-strong p-6 text-center">
+              <p className="font-display text-lg italic text-ivory-dim">
+                The table isn&apos;t set yet.
+              </p>
+              <p className="eyebrow mt-2">Odds open closer to kickoff</p>
+            </div>
           ) : uiPhase === "opening" ? (
             <div className="panel-strong p-6 text-center">
               <p className="font-display text-lg italic text-ivory-dim">

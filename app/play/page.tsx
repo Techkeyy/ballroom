@@ -281,7 +281,7 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
                   : "pre-match"}
           </span>
         </span>
-        {(match.live || match.finished) && marketOpen && (
+        {(match.live || match.finished) && match.hasScore !== false && (
           <span className="tabular font-num text-sm text-ivory-dim">
             {match.scoreHome}–{match.scoreAway}
           </span>
@@ -314,6 +314,10 @@ function MatchCard({ match, index }: { match: Match; index: number }) {
                 {delta.toFixed(1)} / 5s
               </p>
             </>
+          ) : match.finished ? (
+            <p className="max-w-[110px] text-[11px] leading-snug text-ivory-faint">
+              Market closed
+            </p>
           ) : (
             <p className="max-w-[110px] text-[11px] leading-snug text-ivory-faint">
               Odds open closer to kickoff

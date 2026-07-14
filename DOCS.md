@@ -87,6 +87,12 @@ home + draw + away = 100.
 - **Resilience layer.** TxLINE's odds/scores snapshots are lumpy near a market
   open (see feedback), so every read retries and the server holds a *last-good*
   cache per fixture — a transient miss never blanks the number or the score.
+- **Score-first reads.** The scores feed is the authority on match state and the
+  odds feed on the market number — each survives the other's absence. TxLINE
+  pulls the odds entirely at full time, so a finished match still renders "FT +
+  final score" from scores alone; and goal totals follow the *latest*
+  goals-carrying event (not a running max), so a VAR-disallowed goal is
+  corrected instead of sticking forever.
 - **Persistence:** Vercel KV for leagues / rounds / feed / receipts (globalThis
   fallback in dev).
 - **Verified receipts:** OG-image gold ticket (`next/og`, edge runtime) that

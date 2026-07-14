@@ -39,13 +39,17 @@ reads camelCase. We only got it right by dumping live responses. Aligning the
 reference to the actual payload (or documenting the casing explicitly) would cut
 the integration time noticeably.
 
-### 3. Scores snapshot is a stream of event messages, some empty
+### 3. Scores snapshot is a stream of event messages, some empty — and corrections go *down*
 `scores/snapshot` returns an array where some entries are `action_discarded` and
 carry corners but no goals. Naively taking "latest by `Seq`" gave us a **stuck /
-wrong scoreline**. We had to aggregate the **max goals and max clock across all
-events** to get the truth. A documented "here is the current cumulative state vs.
-the event log" split, or a `current`/`snapshot` object separate from the event
-stream, would remove a real footgun.
+wrong scoreline**; naively taking the **max across events** gave us a *different*
+wrong scoreline, because **goal totals get corrected downward**: in France v
+Spain (fixture 18237038) the away total read **3 at Seq 638**, then was
+**corrected to 2 from Seq 844** (VAR-disallowed goal) — a running max serves the
+phantom goal forever. The aggregation that actually works is "per side, the
+latest event that *carries* a goals reading wins." A documented "current
+cumulative state" object separate from the event log — or an explicit
+`correction` flag on amending events — would remove a real footgun.
 
 ### 4. `InRunning` is an unreliable "is this match live?" signal
 We initially derived live-ness from `odds.some(InRunning === true)`. During a
@@ -53,8 +57,14 @@ real live match (verified: minute 50, 1–0) the in-running flag flickered false
 snapshots dropped the in-running line, so our UI briefly showed **"FT" at 66'**.
 We switched to driving live/finished off the **scores clock/minute** instead.
 A single authoritative match-status enum (`scheduled | live | ht | finished`) on
-the scores feed would be the cleanest fix — `GameState` currently read
-`"scheduled"` even mid-match in our data, so it wasn't usable for this.
+the scores feed would be the cleanest fix — `GameState` read `"scheduled"` for
+the *entire lifecycle* of a real match in our data (including after full time),
+so it wasn't usable for this. What we reverse-engineered instead: `StatusId`
+walks 1 → 2/3/4 (in play, `3` looked like half-time) → 5 → **100 (finished)**,
+and at full time the **odds snapshot empties entirely (0 records)** — so
+"odds present + InRunning" can't distinguish FT from a transient odds miss
+either. Documenting the `StatusId` enum would have saved us the most time of
+anything on this list.
 
 ### 5. On-chain activation papercuts
 - The `subscribe` instruction needs the user's **TxL associated token account to
