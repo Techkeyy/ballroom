@@ -33,6 +33,7 @@ export default function PredictionPad({
   onLock,
   disabled,
   legLabel,
+  windowMs = PREDICT_WINDOW_MS,
 }: {
   current: number;
   guess: number;
@@ -43,9 +44,11 @@ export default function PredictionPad({
   disabled?: boolean;
   /** the outcome being called — a team code, or "DRAW" */
   legLabel?: string;
+  /** total round length, for the progress bar + label (aftershock is shorter) */
+  windowMs?: number;
 }) {
   const secs = Math.ceil(msLeft / 1000);
-  const windowLabel = formatWindow(PREDICT_WINDOW_MS);
+  const windowLabel = formatWindow(windowMs);
   const countdown = formatCountdown(secs);
   const delta = Math.round((guess - current) * 10) / 10;
 
@@ -63,7 +66,7 @@ export default function PredictionPad({
           <div
             className="h-full bg-gold transition-[width] duration-1000 ease-linear"
             style={{
-              width: `${Math.max(0, Math.min(100, (msLeft / PREDICT_WINDOW_MS) * 100))}%`,
+              width: `${Math.max(0, Math.min(100, (msLeft / windowMs) * 100))}%`,
             }}
           />
         </div>

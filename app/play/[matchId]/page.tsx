@@ -10,7 +10,7 @@ import ShareCard from "@/components/ShareCard";
 import TableFeed from "@/components/TableFeed";
 import { useSyncRound } from "@/components/useSyncRound";
 import { getMatch, subscribeToMatch, legValueOf, dataSource, type Match, type Leg } from "@/lib/txline";
-import { PREDICT_WINDOW_MS, scoreGuess, SHARP_BAR, nextStreak, verdict } from "@/lib/game";
+import { PREDICT_WINDOW_MS, scoreCall, SHARP_BAR, nextStreak, verdict } from "@/lib/game";
 import { load, save, leaveTable, type Persisted } from "@/lib/store";
 import { leaveLeague, dissolveTable, fetchLeague } from "@/lib/league";
 
@@ -184,7 +184,7 @@ export default function MatchPage() {
     if (!locked || !m || !prev?.player) return;
 
     const actual = Math.round(legValueOf(m, locked.leg) * 10) / 10;
-    const points = scoreGuess(locked.guess, actual);
+    const points = scoreCall(locked.guess, actual, locked.startProb);
     const kept = points >= SHARP_BAR;
     const streak = nextStreak(prev.player.streak, kept);
     const p = {
@@ -334,6 +334,13 @@ export default function MatchPage() {
   const legsClickable = !(uiPhase === "locked" && !leagueMode);
 
   const uiStart = leagueMode ? (sync.round?.startProb ?? activeLegValue) : activeLegValue;
+
+  // aftershock: a goal-triggered short round (league only)
+  const isAftershock = leagueMode && sync.round?.kind === "aftershock";
+  const roundWindowMs =
+    leagueMode && sync.round
+      ? sync.round.deadline - sync.round.openedAt
+      : PREDICT_WINDOW_MS;
 
   const uiResult: Result | null = leagueMode
     ? sync.myResult && sync.round?.actual != null
@@ -506,6 +513,18 @@ export default function MatchPage() {
             </div>
           ) : (
             <div>
+              {isAftershock && (
+                <div
+                  className="mb-3 flex items-center gap-3 rounded-md border border-gold/40 bg-gold/[0.08] px-4 py-3 animate-riseIn"
+                  style={{ boxShadow: "0 0 24px rgba(226,182,91,0.12)" }}
+                >
+                  <span className="h-2 w-2 shrink-0 animate-pulseDot rounded-full bg-gold" />
+                  <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-gold">
+                    Goal{sync.round?.goalMinute ? ` ${sync.round.goalMinute}'` : ""} aftershock
+                    <span className="text-ivory-dim"> · where does it land?</span>
+                  </p>
+                </div>
+              )}
               <PredictionPad
                 current={Math.round(uiStart * 10) / 10}
                 guess={uiGuess}
@@ -514,6 +533,7 @@ export default function MatchPage() {
                 msLeft={uiMsLeft}
                 onLock={uiLock}
                 legLabel={activeLegLabel}
+                windowMs={roundWindowMs}
               />
               {leagueMode && (
                 <p className="eyebrow mt-3 text-center">

@@ -13,20 +13,34 @@ export const PREDICT_WINDOW_MS =
   Number(process.env.NEXT_PUBLIC_ROUND_SECONDS ?? 300) * 1000;
 
 /** A round score at/above this is "sharp" — keeps a solo streak alive. */
-export const SHARP_BAR = 50;
+export const SHARP_BAR = 55;
 
 /**
- * Closeness scoring with exponential decay.
- * err = |guess - actual| in percentage points.
- *   err 0  -> 100 pts
- *   err 5  -> ~61
- *   err 10 -> ~37
- *   err 20 -> ~14
- * Everyone who plays scores something; precision is richly rewarded.
+ * Skill-based round scoring, measured against the naive "no-change" baseline.
+ *
+ * The old model scored raw closeness to the final number — which meant just
+ * echoing the current number scored high whenever the market was calm (i.e.
+ * almost always). This scores how well you read the MOVE:
+ *
+ *   err     = |guess  - actual|     how close your call landed
+ *   baseErr = |startProb - actual|  how close doing nothing would've been (= the move size)
+ *
+ * · READ (max 65) — how much you beat the parrot baseline. Echo the opening
+ *   number and you score ~0 here; nail a real swing and you bank most of it.
+ * · PRECISION (max 40) — a steeper closeness reward, so accuracy still matters.
+ *
+ * So: parroting a calm round scores modestly, parroting through a big move is
+ * punished, and reading a genuine swing is where the points live.
+ *   e.g. move +12, nail it (err 1) -> ~92 ; parrot that move (err 12) -> ~4
+ *        calm round, err 2         -> ~27 ; read a small move (err 0.5) -> ~77
  */
-export function scoreGuess(guess: number, actual: number): number {
+export function scoreCall(guess: number, actual: number, startProb: number): number {
   const err = Math.abs(guess - actual);
-  return Math.round(100 * Math.exp(-err / 10));
+  const baseErr = Math.abs(startProb - actual);
+  const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+  const read = 65 * clamp01((baseErr - err) / Math.max(baseErr, 4));
+  const precision = 40 * Math.exp(-err / 5);
+  return Math.round(read + precision);
 }
 
 export function median(nums: number[]): number {
@@ -40,10 +54,10 @@ export function nextStreak(current: number, kept: boolean): number {
   return kept ? current + 1 : 0;
 }
 
-/** A short, human verdict for the result card. */
+/** A short, human verdict for the result card (tuned to the skill-score curve). */
 export function verdict(points: number): { label: string; tone: "gold" | "green" | "grey" } {
-  if (points >= 90) return { label: "Sniper", tone: "gold" };
-  if (points >= 65) return { label: "Sharp read", tone: "green" };
-  if (points >= 35) return { label: "In the mix", tone: "green" };
+  if (points >= 80) return { label: "Sniper", tone: "gold" };
+  if (points >= 55) return { label: "Sharp read", tone: "green" };
+  if (points >= 28) return { label: "In the mix", tone: "green" };
   return { label: "Off the pace", tone: "grey" };
 }

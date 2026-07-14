@@ -12,7 +12,7 @@
  *   }
  */
 
-import { PREDICT_WINDOW_MS, scoreGuess, median } from "./game";
+import { PREDICT_WINDOW_MS, SHARP_BAR, scoreCall, median } from "./game";
 import { fetchMatchPoint } from "./txline-server";
 
 export type LeagueMember = {
@@ -54,6 +54,8 @@ function legValue(m: { p: number; pDraw: number; pAway: number }, leg: Leg): num
   return m.p;
 }
 
+export type RoundKind = "live" | "aftershock";
+
 export type LeagueRound = {
   id: string;
   matchId: string;
@@ -71,6 +73,12 @@ export type LeagueRound = {
   scoreAway: number;
   guesses: Record<string, RoundGuess>;
   results: Record<string, RoundResult> | null;
+  // "aftershock" rounds are auto-opened by a goal and run on a short clock.
+  kind: RoundKind;
+  goalMinute?: number;
+  // set when a goal landed mid-round and locks existed: the round's clock is
+  // pulled in and, once it resolves, the next round opens as the aftershock.
+  pendingAftershock?: boolean;
   // oracle identity of the market read at resolve (for verified receipts)
   marketMessageId?: string;
   marketTs?: number;
@@ -314,6 +322,8 @@ export async function dissolveLeague(
 // ---- synchronized rounds ----------------------------------------------------
 
 const REVEAL_MS = 9_000; // how long a resolved round lingers before a new one opens
+const AFTERSHOCK_MS = 60_000; // goal-aftershock round clock
+const GOAL_CUT_MS = 6_000; // when a goal lands mid-round, wrap the current round up this fast
 
 function roundKey(code: string, matchId: string): string {
   return `${code.toUpperCase()}:${matchId}`;
@@ -367,7 +377,7 @@ async function resolveRound(code: string, round: LeagueRound): Promise<LeagueRou
     addr,
     name: gg.name,
     guess: gg.guess,
-    points: scoreGuess(gg.guess, actual),
+    points: scoreCall(gg.guess, actual, round.startProb),
   }));
   const med = median(scored.map((s) => s.points));
 
@@ -386,7 +396,9 @@ async function resolveRound(code: string, round: LeagueRound): Promise<LeagueRou
     for (const s of scored) {
       const m = league.members[s.addr];
       if (!m) continue;
-      const kept = s.points >= med; // held or beat the table this round
+      // keep a streak only by clearing a real bar AND beating the table —
+      // a table of lazy parrots shouldn't all keep streaks off a calm round.
+      const kept = s.points >= SHARP_BAR && s.points >= med;
       m.points += s.points;
       m.rounds += 1;
       m.streak = kept ? m.streak + 1 : 0;
@@ -426,30 +438,59 @@ export async function getOrOpenRound(
 ): Promise<LeagueRound | null> {
   const key = roundKey(code, matchId);
   const now = Date.now();
+  const market = await readMarket(matchId); // server-authoritative, read once
   let round = await getRoundRaw(key);
+
+  // GOAL DETECTION (KV-safe, no global state): the live scoreline has climbed
+  // above what THIS table's current round was opened with → a goal happened
+  // since this table last (re)synced. Works across serverless invocations
+  // because the round's reference score is persisted with the round.
+  const curScore = market ? market.scoreHome + market.scoreAway : null;
+  const roundScore = round ? round.scoreHome + round.scoreAway : 0;
+  const goalSinceRound = market != null && round != null && curScore! > roundScore;
+  // a goal is "owed" an aftershock if the score climbed, or a mid-round goal was
+  // already flagged (the resolve absorbs the score, so we remember it explicitly)
+  const wantsAftershock = goalSinceRound || Boolean(round?.pendingAftershock);
 
   if (round && !round.resolved && now >= round.deadline) {
     round = await resolveRound(code, round);
     await putRound(key, round);
     return round;
   }
-  // A round already live is locked to whichever leg it opened with — UNLESS no
-  // one has locked a call yet, in which case switching the leg is safe (nobody
-  // committed) and re-opens the round on the new leg immediately.
   if (round && !round.resolved) {
     const noneLocked = Object.keys(round.guesses).length === 0;
     const wantsLegChange = opts.open && opts.leg && opts.leg !== round.leg;
-    if (!(noneLocked && wantsLegChange)) return round;
-    // else fall through and open a fresh round on the requested leg
+    // A goal just dropped mid-round:
+    //  · no one locked  → replace this round with the aftershock immediately
+    //  · someone locked → let their round finish, but pull the clock right in
+    //    so the aftershock fires within seconds (nobody's call is torn up).
+    if (goalSinceRound && !noneLocked && now < round.deadline - GOAL_CUT_MS) {
+      round.deadline = now + GOAL_CUT_MS;
+      round.pendingAftershock = true;
+      await putRound(key, round);
+      return round;
+    }
+    const cutToAftershock = wantsAftershock && noneLocked;
+    // A round already live is otherwise locked to its leg — unless no one has
+    // committed and the caller is requesting a different leg (instant switch).
+    if (!(cutToAftershock || (noneLocked && wantsLegChange))) return round;
+    // else fall through and open a fresh round (aftershock or leg change)
   }
-  if (round && round.resolved && now - round.deadline < REVEAL_MS && !opts.open) {
-    return round; // still revealing results
+  // A resolved round normally lingers for the reveal — but an owed goal jumps it.
+  if (round && round.resolved && now - round.deadline < REVEAL_MS && !opts.open && !wantsAftershock) {
+    return round;
   }
 
-  // open a fresh round — needs a live market read for startProb
-  const market = await readMarket(matchId);
   if (!market) return round ?? null; // can't open without the market
-  const leg: Leg = opts.leg ?? "home";
+
+  // aftershock when a goal is owed (a first-ever round for the table isn't one).
+  const isAftershock = round != null && wantsAftershock;
+  const kind: RoundKind = isAftershock ? "aftershock" : "live";
+  const windowMs = isAftershock ? AFTERSHOCK_MS : PREDICT_WINDOW_MS;
+  const goalMinute = isAftershock ? market.minute : undefined;
+  // keep the leg the table was on (or the requested one); the goal moves that number
+  const leg: Leg = opts.leg ?? round?.leg ?? "home";
+
   const fresh: LeagueRound = {
     id: `${matchId}-${now}`,
     matchId,
@@ -459,7 +500,7 @@ export async function getOrOpenRound(
     leg,
     startProb: legValue(market, leg),
     openedAt: now,
-    deadline: now + PREDICT_WINDOW_MS,
+    deadline: now + windowMs,
     resolved: false,
     actual: null,
     minute: market.minute,
@@ -467,8 +508,16 @@ export async function getOrOpenRound(
     scoreAway: market.scoreAway,
     guesses: {},
     results: null,
+    kind,
+    goalMinute,
   };
   await putRound(key, fresh);
+  if (isAftershock) {
+    await postToFeed(code, {
+      kind: "event",
+      text: `GOAL${goalMinute ? ` ${goalMinute}'` : ""} — market repricing. Call where it lands.`,
+    });
+  }
   return fresh;
 }
 

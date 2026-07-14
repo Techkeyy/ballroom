@@ -393,6 +393,48 @@ export type MatchPoint = {
 // This is what kills the "connecting/disconnecting" flap.
 const lastPoint = new Map<number, MatchPoint & { at: number }>();
 
+// ---- dev/demo goal injection -----------------------------------------------
+// Real goals are detected by the round engine (it compares the live market
+// score to the round's own stored score — see getOrOpenRound), which needs no
+// global state and is KV-safe. These helpers only exist to simulate a goal for
+// testing / the demo video, and live on globalThis so the (separately-bundled)
+// dev route and league route share them within a process/warm lambda.
+
+const dg = globalThis as unknown as {
+  __ballroomDemoSeed?: Map<number, MatchPoint & { at: number }>;
+  __ballroomDemoGoalBump?: Map<number, number>;
+};
+const demoSeed = (dg.__ballroomDemoSeed ??= new Map());
+const demoGoalBump = (dg.__ballroomDemoGoalBump ??= new Map<number, number>());
+
+/** DEV/DEMO ONLY: seed a readable market so a round can open without live odds. */
+export function seedDemoMarket(fixtureId: string) {
+  const id = Number(fixtureId);
+  if (lastPoint.get(id) || demoSeed.get(id)) return;
+  demoSeed.set(id, {
+    p: 55,
+    pDraw: 26,
+    pAway: 19,
+    minute: 40,
+    scoreHome: 0,
+    scoreAway: 0,
+    messageId: `demo-${id}`,
+    ts: Date.now(),
+    live: true,
+    finished: false,
+    at: Date.now(),
+  });
+}
+
+/** DEV/DEMO ONLY: simulate a goal by bumping the fixture's effective score. */
+export function markGoalForTest(fixtureId: string): { bump: number } {
+  const id = Number(fixtureId);
+  seedDemoMarket(fixtureId);
+  const bump = (demoGoalBump.get(id) ?? 0) + 1;
+  demoGoalBump.set(id, bump);
+  return { bump };
+}
+
 
 /** Latest market win probability + scoreline + live flag for one fixture. */
 export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | null> {
@@ -402,7 +444,7 @@ export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | n
     fetchScoreFor(id),
     participant1IsHome(id),
   ]);
-  const prev = lastPoint.get(id);
+  const prev = lastPoint.get(id) ?? demoSeed.get(id);
   const pcts = participantPcts(odds);
 
   // --- odds: use fresh, else hold last good ---
@@ -457,11 +499,16 @@ export async function fetchMatchPoint(fixtureId: string): Promise<MatchPoint | n
   const oddsLive = odds.some((o) => o.InRunning === true);
   const live = !finished && (minute > 0 || oddsLive || clockRunning);
 
+  // store the REAL reading (no demo bump — avoids compounding on the next read)
   const point: MatchPoint = {
     p, pDraw, pAway, minute, scoreHome, scoreAway, messageId, ts, live, finished,
   };
   lastPoint.set(id, { ...point, at: Date.now() });
-  return point;
+
+  // dev/demo: reflect any simulated goals in the returned score so the round
+  // engine's score-delta detection fires (never stored, so it can't compound)
+  const bump = demoGoalBump.get(id) ?? 0;
+  return bump ? { ...point, scoreHome: scoreHome + bump } : point;
 }
 
 // Best-effort "match is over" detection from the scores feed. Conservative —
