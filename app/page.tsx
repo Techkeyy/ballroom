@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import WalletButton from "@/components/WalletButton";
-import { load, signIn, setLeague as seatAtLeague, shortAddr, type Player } from "@/lib/store";
+import { load, signIn, signOut, setLeague as seatAtLeague, shortAddr, type Player } from "@/lib/store";
 import { createLeague, leagueLink } from "@/lib/league";
 
 function scrollToId(id: string) {
@@ -29,6 +29,13 @@ export default function Home() {
   function handleSignIn(name: string, address?: string) {
     const s = signIn(name, address);
     setPlayer(s.player);
+  }
+
+  function handleSignOut() {
+    signOut(); // clears the browser identity → back to the Connect Phantom screen
+    setPlayer(null);
+    setLeague("Solo");
+    setLeagueCode(null);
   }
 
   async function handleCreateTable() {
@@ -156,8 +163,8 @@ export default function Home() {
                 </div>
 
                 <div className="grid grid-cols-3 divide-x divide-white/[0.07] border-y border-white/[0.07] py-4">
-                  <Stat label="Points" value={player.points} />
-                  <Stat label="Streak" value={player.streak} />
+                  <Stat label="Career pts" value={player.points} />
+                  <Stat label="Best" value={player.bestStreak} />
                   <Stat label="Rounds" value={player.rounds} />
                 </div>
 
@@ -178,6 +185,13 @@ export default function Home() {
                     {creating ? "Setting the table" : "Open your own table"}
                   </button>
                 )}
+
+                <button
+                  onClick={handleSignOut}
+                  className="w-full pt-1 font-mono text-[10px] tracking-[0.14em] text-ivory-faint transition-colors hover:text-rose"
+                >
+                  SIGN OUT
+                </button>
               </div>
             ) : (
               <div className="space-y-5">

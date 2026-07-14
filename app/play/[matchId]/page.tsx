@@ -49,6 +49,7 @@ export default function MatchPage() {
   const matchRef = useRef<Match | null>(null);
   const lockRef = useRef<{ startProb: number; guess: number; leg: Leg } | null>(null);
   const receiptDone = useRef<string | null>(null);
+  const creditedRef = useRef<string | null>(null); // last league round credited to career stats
   // once a fixture's market has opened, keep showing it — TxLINE's snapshot can
   // momentarily drop the 1X2 line, and we don't want the whole panel to flap.
   const marketSeenRef = useRef(false);
@@ -279,15 +280,31 @@ export default function MatchPage() {
     });
   }, [leagueMode, sync.round, sync.myResult, sync.myStreak, writeReceipt]);
 
-  // mirror authoritative league standing into local store (landing page)
+  // Credit the player's CAREER stats when a league round resolves. Career
+  // points/rounds accumulate forever (dashboard); each table's own tally starts
+  // at 0 and lives on the server (the leaderboard) — the two are separate.
   useEffect(() => {
-    if (!leagueMode || !sync.myMember) return;
+    if (!leagueMode || !sync.round?.resolved || !sync.myResult) return;
+    const rid = sync.round.id;
+    if (creditedRef.current === rid) return; // credit each round exactly once
+    creditedRef.current = rid;
     const prev = stateRef.current;
     if (!prev?.player) return;
-    const next = { ...prev, player: { ...prev.player, ...sync.myMember } };
+    const gained = sync.myResult.points;
+    const tableStreak = sync.myStreak ?? 0;
+    const next = {
+      ...prev,
+      player: {
+        ...prev.player,
+        points: prev.player.points + gained,
+        streak: tableStreak,
+        bestStreak: Math.max(prev.player.bestStreak, tableStreak),
+        rounds: prev.player.rounds + 1,
+      },
+    };
     save(next);
     setState(next);
-  }, [leagueMode, sync.myMember]);
+  }, [leagueMode, sync.round?.resolved, sync.round?.id, sync.myResult, sync.myStreak]);
 
   useEffect(() => {
     if (leagueMode && sync.phase === "opening") setReceiptId(null);
