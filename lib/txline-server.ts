@@ -35,6 +35,7 @@ async function guestJwt(): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(`guest/start ${res.status}`);
   const { token } = (await res.json()) as { token: string };
@@ -55,7 +56,15 @@ async function authedHeaders(): Promise<Record<string, string>> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { headers: await authedHeaders() });
+  // MUST bypass Next.js's fetch Data Cache. Without this, `fetch()` GETs inside
+  // route handlers default to force-cache on Vercel, so the very first (usually
+  // PRE-MATCH) odds/scores snapshot gets frozen and replayed — the match then
+  // shows "pre"/0′ forever even after kickoff. Dev mode disables the cache, so
+  // this bug only ever appears in production. Every live read must be no-store.
+  const res = await fetch(`${BASE}${path}`, {
+    headers: await authedHeaders(),
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
   return (await res.json()) as T;
 }

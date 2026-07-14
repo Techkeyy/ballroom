@@ -14,7 +14,7 @@
  * Live-data unlock (paid tier) is a separate on-chain step — see lib/txline-activate.ts.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 export default function WalletButton({
@@ -27,63 +27,105 @@ export default function WalletButton({
   defaultName?: string;
   ctaLabel?: string;
 }) {
-  const { wallets, select, connect, connected, connecting, publicKey, signMessage } =
-    useWallet();
+  const {
+    wallets,
+    wallet,
+    select,
+    connect,
+    connected,
+    connecting,
+    publicKey,
+    signMessage,
+  } = useWallet();
   const [name, setName] = useState(defaultName);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const pending = useRef(false);
+  // Two-stage intent flags, because select()/connect()/sign are each a
+  // separate render: user wants to connect, then (once connected) to sign in.
+  const wantConnect = useRef(false);
+  const wantSignIn = useRef(false);
 
   const nameOk = name.trim().length >= 2;
 
-  async function connectWallet() {
+  function pickWallet() {
+    const usable = wallets.filter(
+      (w) => w.readyState === "Installed" || w.readyState === "Loadable",
+    );
+    return usable.find((w) => w.adapter.name === "Phantom") ?? usable[0] ?? null;
+  }
+
+  function onConnectError() {
+    setError(
+      "Couldn't open the wallet. Approve the popup, or continue as guest.",
+    );
+    wantConnect.current = false;
+    wantSignIn.current = false;
+    setBusy(false);
+  }
+
+  // Prove ownership with a signed message, then hand the address up.
+  const proveAndSignIn = useCallback(async () => {
+    if (!publicKey) return;
+    wantSignIn.current = false;
+    const address = publicKey.toBase58();
+    try {
+      if (signMessage) {
+        const nonce = Math.random().toString(36).slice(2);
+        const msg = new TextEncoder().encode(
+          `Sign in to Ball Room\nwallet: ${address}\nnonce: ${nonce}`,
+        );
+        await signMessage(msg); // proof of ownership (SIWS-lite)
+      }
+      onSignIn(name.trim(), address);
+    } catch {
+      setError("Signature declined. You can retry or continue as guest.");
+    } finally {
+      setBusy(false);
+    }
+  }, [publicKey, signMessage, name, onSignIn]);
+
+  function connectWallet() {
     setError(null);
     if (!nameOk) {
       setError("Pick a name your table will recognise first.");
       return;
     }
-    const available = wallets.filter((w) => w.readyState === "Installed");
-    const choice =
-      available.find((w) => w.adapter.name === "Phantom") ?? available[0];
+    const choice = pickWallet();
     if (!choice) {
       setError("No Solana wallet detected. Install Phantom — or continue as guest.");
       return;
     }
-    try {
-      setBusy(true);
-      pending.current = true;
-      select(choice.adapter.name);
-      // autoConnect usually finishes the connect after select; nudge it if not.
-      if (!connected) await connect().catch(() => {});
-    } catch {
-      setError("Couldn't connect the wallet. Try again, or continue as guest.");
-      pending.current = false;
-      setBusy(false);
+    setBusy(true);
+    wantSignIn.current = true;
+
+    if (connected && publicKey) {
+      // already connected from a previous session — go straight to signing
+      void proveAndSignIn();
+      return;
     }
+    if (wallet?.adapter.name === choice.adapter.name) {
+      // wallet already selected but not connected — connect now
+      connect().catch(onConnectError);
+      return;
+    }
+    // Fresh selection: defer connect() to the effect below, once the provider
+    // has actually registered the chosen wallet (calling connect() synchronously
+    // here races the select() and throws WalletNotSelected — no popup).
+    wantConnect.current = true;
+    select(choice.adapter.name);
   }
 
-  // Once connected, prove ownership with a signed message, then sign in.
+  // Stage 1 → 2: the wallet is now selected, so it's safe to connect (popup).
   useEffect(() => {
-    if (!pending.current || !connected || !publicKey) return;
-    pending.current = false;
-    (async () => {
-      const address = publicKey.toBase58();
-      try {
-        if (signMessage) {
-          const nonce = Math.random().toString(36).slice(2);
-          const msg = new TextEncoder().encode(
-            `Sign in to Ball Room\nwallet: ${address}\nnonce: ${nonce}`,
-          );
-          await signMessage(msg); // proof of ownership (SIWS-lite)
-        }
-        onSignIn(name, address);
-      } catch {
-        setError("Signature declined. You can retry or continue as guest.");
-      } finally {
-        setBusy(false);
-      }
-    })();
-  }, [connected, publicKey, signMessage, name, onSignIn]);
+    if (!wantConnect.current || !wallet || connected || connecting) return;
+    wantConnect.current = false;
+    connect().catch(onConnectError);
+  }, [wallet, connected, connecting, connect]);
+
+  // Stage 2 → 3: connected, so prove ownership and sign in.
+  useEffect(() => {
+    if (wantSignIn.current && connected && publicKey) void proveAndSignIn();
+  }, [connected, publicKey, proveAndSignIn]);
 
   return (
     <div className="w-full space-y-3">
