@@ -10,8 +10,11 @@ Built for the **TxODDS "Consumer and Fan Experiences"** World Cup track on [Supe
 
 ## Features
 
-- **Live market gameplay** — real-time TxLINE mainnet odds (Fixtures, Odds, Scores); pick any leg of the 3-way market (home / draw / away) and call where it lands when the round clock runs out. Closest to the pin scores most.
+- **Live market gameplay** — real-time TxLINE mainnet odds (Fixtures, Odds, Scores); pick any leg of the 3-way market (home / draw / away) and call where it lands when the round clock runs out.
+- **Skill-based scoring** — you're scored on how well you read the *move*, not raw closeness: calls are measured against the naive "no-change" baseline, so echoing the current number scores near zero while nailing a real swing pays big. Streaks require clearing a real bar *and* beating the table.
+- **Goal-aftershock rounds** — when a goal drops, the slow round is swept aside for a short 60-second "where does the market settle?" round (banner + a "GOAL — market repricing" feed event). The market is *guaranteed* to be moving — the loudest moment of the match becomes the highest-stakes round.
 - **Synchronized tables (leagues)** — server-authoritative rounds: one shared clock per table, everyone calls the same number, the server reads the live market at open and resolve and ranks the humans. No client can fake it.
+- **Full fixtures card** — live matches pinned up top, then upcoming fixtures grouped by day (Today / Tomorrow / dated) with kickoff times, so there's always something to open even between matchdays.
 - **Invite links & join by code** — open a table, share `/join/CODE` or the 5-char code itself. Hosts are tagged, can kick members or close the table; members can leave anytime.
 - **Table talk** — a game-aware feed per table: auto-events ("Ada opened the table", "Ben is in for this round", round winners + streaks) plus short messages and emoji reactions. Members only.
 - **Receipts, provable on Solana** — every resolved call becomes a shareable receipt page with an OG-image "gold ticket" unfurl. Live-mode receipts carry the TxLINE **Merkle validation proof** (batch root committed on-chain by the TxODDS oracle) and a `/verify` endpoint that re-attests the numbers against the oracle.

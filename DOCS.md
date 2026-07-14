@@ -19,8 +19,10 @@ It's the one fan experience that is **impossible to build without a live odds
 provider** — the odds feed isn't decoration, it's the entire game. That's why it
 fits TxLINE specifically rather than any generic scores API.
 
-- **Skill, not gambling.** Closest-to-the-pin scoring, no stake of value — which
-  also keeps it clear of gambling law (a feature, per the track's own warning).
+- **Skill, not gambling.** You're scored against the naive "no-change" baseline —
+  echoing the current number scores ~0, reading the actual move pays — with no
+  stake of value, which also keeps it clear of gambling law (a feature, per the
+  track's own warning).
 - **Social by design.** Invite-link tables, one shared round clock, live
   leaderboard, a game-aware table feed, and shareable receipts.
 - **Solana is load-bearing, not bolted on.** The wallet that signs you in is the
@@ -68,6 +70,9 @@ home + draw + away = 100.
 - **Live status, scoreline, minute** ← `scores/snapshot` clock + goals.
 - **Round resolution** ← the server re-reads `odds/snapshot` at the deadline; the
   actual value is authoritative.
+- **Goal-aftershock rounds** ← `scores/snapshot` goal detection: when the live
+  scoreline climbs above the round's own reference score, the server auto-opens a
+  short 60s round on where the market resettles (the moment odds move most).
 - **Verified receipts** ← `odds/validation` Merkle proof attached to each
   resolved round; a `/api/receipt/[id]/verify` route re-attests it against the
   live oracle. No generic feed can offer *unfakeable* hot-take receipts.
