@@ -125,7 +125,7 @@ export default function PlayPage() {
             Ball Room
           </Link>
           <h1 className="mt-2 font-display text-[32px] font-medium leading-none text-ivory">
-            Today&apos;s card
+            The card
           </h1>
         </div>
         <span className="flex items-center gap-2 pb-0.5">
@@ -214,16 +214,34 @@ export default function PlayPage() {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {matches.map((m, i) => (
-          <MatchCard key={m.id} match={m} index={i} />
-        ))}
-        {matches.length === 0 && (
-          <p className="col-span-full py-20 text-center font-display text-lg italic text-ivory-faint">
-            No World Cup matches today — check back on the next matchday.
-          </p>
-        )}
-      </div>
+      {matches.length === 0 ? (
+        <p className="py-20 text-center font-display text-lg italic text-ivory-faint">
+          No World Cup fixtures right now — check back on the next matchday.
+        </p>
+      ) : (
+        <div className="space-y-8">
+          {groupMatches(matches).map((group) => (
+            <section key={group.label}>
+              <div className="mb-3 flex items-center gap-2">
+                {group.live && (
+                  <span
+                    className="h-1.5 w-1.5 animate-pulseDot rounded-full bg-gold"
+                    style={{ boxShadow: "0 0 10px rgba(226,182,91,0.6)" }}
+                  />
+                )}
+                <p className={`eyebrow ${group.live ? "!text-gold" : ""}`}>
+                  {group.label}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {group.matches.map((m, i) => (
+                  <MatchCard key={m.id} match={m} index={i} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
       {state?.player && (
         <p className="eyebrow mt-10 text-center">
@@ -312,6 +330,55 @@ function trend(history: { p: number }[]): number {
   const a = history[history.length - 6].p;
   const b = history[history.length - 1].p;
   return Math.round((b - a) * 10) / 10;
+}
+
+type MatchGroup = { label: string; live?: boolean; matches: Match[] };
+
+/** Group the (already live-first, kickoff-sorted) list into Live / Today /
+ *  Tomorrow / dated day sections. */
+function groupMatches(matches: Match[]): MatchGroup[] {
+  const groups: MatchGroup[] = [];
+  const live = matches.filter((m) => m.live);
+  if (live.length) groups.push({ label: "Live now", live: true, matches: live });
+
+  const byDay = new Map<string, Match[]>();
+  for (const m of matches) {
+    if (m.live) continue;
+    const key = dayLabel(m.kickoff);
+    const arr = byDay.get(key);
+    if (arr) arr.push(m);
+    else byDay.set(key, [m]);
+  }
+  for (const [label, ms] of Array.from(byDay.entries())) {
+    groups.push({ label, matches: ms });
+  }
+  return groups;
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function dayLabel(ms?: number): string {
+  if (!ms) return "Scheduled";
+  const d = new Date(ms);
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 86_400_000);
+  if (sameDay(d, now)) return "Today";
+  if (sameDay(d, tomorrow)) return "Tomorrow";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }).format(d);
+  } catch {
+    return "Upcoming";
+  }
 }
 
 function formatKickoff(ms?: number): string | null {

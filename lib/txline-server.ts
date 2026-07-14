@@ -280,7 +280,13 @@ function todayWindowUTC(tzOffsetMin: number): { start: number; end: number } {
   return { start, end: start + DAY_MS };
 }
 
-/** World Cup fixtures with their current market number, scoreline and live flag. */
+// How many days of upcoming fixtures to list beyond today. Kept short so a quiet
+// period doesn't show a wall of "odds not open yet" cards.
+const HORIZON_DAYS = Number(process.env.TXLINE_HORIZON_DAYS ?? "5");
+const LIVE_LOOKBACK_MS = 3.5 * 60 * 60 * 1000; // a match kicked off this recently could still be live
+
+/** World Cup fixtures: live now, today, and the next few days — with market
+ *  numbers for the ones actually in play, kickoff times for the rest. */
 export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
   const fixtures = await get<FixtureSnapshot[]>(
     `/fixtures/snapshot?competitionId=${COMPETITION_ID}`,
@@ -288,29 +294,41 @@ export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
   // warm the orientation cache so per-fixture reads don't refetch the list
   for (const f of fixtures) fixtureOrientation.set(f.FixtureId, f.Participant1IsHome);
 
-  const { start, end } = todayWindowUTC(tzOffsetMin);
+  const now = Date.now();
+  const { start } = todayWindowUTC(tzOffsetMin);
+  const todayEnd = start + DAY_MS;
+  const horizonEnd = start + (HORIZON_DAYS + 1) * DAY_MS;
 
   const built = await Promise.all(
     fixtures.map(async (f) => {
-      // Keep it if it kicks off in the viewer's "today". (Live fixtures pass
-      // through fetchMatchPoint's own live-flag below regardless of window.)
-      const inTodayWindow = f.StartTime >= start && f.StartTime < end;
-      const pt = await fetchMatchPoint(String(f.FixtureId));
-      if (!inTodayWindow && !pt?.live) return null;
+      const inWindow = f.StartTime >= start && f.StartTime < horizonEnd;
+      const couldBeLive = f.StartTime <= now && f.StartTime > now - LIVE_LOOKBACK_MS;
+      if (!inWindow && !couldBeLive) return null;
 
       const home = f.Participant1IsHome ? f.Participant1 : f.Participant2;
       const away = f.Participant1IsHome ? f.Participant2 : f.Participant1;
 
-      // TxLINE hasn't published a market for this fixture yet (common many
-      // hours before kickoff) — still show it, just without a real number.
+      // Only read the (expensive) live market for matches that are today or
+      // could be in play — pure-future fixtures have no odds yet, so we skip it.
+      const needsMarket = couldBeLive || (f.StartTime >= start && f.StartTime < todayEnd);
+      const pt = needsMarket ? await fetchMatchPoint(String(f.FixtureId)) : null;
+
+      // outside the window and not actually live → drop
+      if (!inWindow && !pt?.live) return null;
+
+      const base = {
+        id: String(f.FixtureId),
+        home,
+        away,
+        homeCode: code(home),
+        awayCode: code(away),
+        kickoff: f.StartTime,
+      };
+
+      // no market posted yet (future fixture, or odds not up) — list it anyway
       if (!pt) {
         const match: Match = {
-          id: String(f.FixtureId),
-          home,
-          away,
-          homeCode: code(home),
-          awayCode: code(away),
-          kickoff: f.StartTime,
+          ...base,
           minute: 0,
           scoreHome: 0,
           scoreAway: 0,
@@ -318,6 +336,7 @@ export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
           drawPct: 0,
           awayPct: 0,
           live: false,
+          finished: false,
           oddsAvailable: false,
           history: [],
         };
@@ -325,12 +344,7 @@ export async function fetchWorldCupMatches(tzOffsetMin = 0): Promise<Match[]> {
       }
 
       const match: Match = {
-        id: String(f.FixtureId),
-        home,
-        away,
-        homeCode: code(home),
-        awayCode: code(away),
-        kickoff: f.StartTime,
+        ...base,
         minute: pt.minute,
         scoreHome: pt.scoreHome,
         scoreAway: pt.scoreAway,
