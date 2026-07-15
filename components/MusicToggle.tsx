@@ -283,7 +283,7 @@ export default function MusicToggle() {
     <button
       onClick={toggle}
       aria-label={on ? "Mute music" : "Play music"}
-      className="fixed right-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-ink-900/70 text-ivory backdrop-blur transition-colors hover:border-gold/40 hover:text-gold"
+      className="fixed bottom-4 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-ink-900/70 text-ivory backdrop-blur transition-colors hover:border-gold/40 hover:text-gold md:bottom-auto md:top-4"
       style={{ WebkitBackdropFilter: "blur(8px)" }}
     >
       {on ? <SpeakerOn /> : <SpeakerOff />}
