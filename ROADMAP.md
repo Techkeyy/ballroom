@@ -1,10 +1,9 @@
-# Ball Room — 10x Roadmap (v3)
+# Ball Room — 10x Roadmap (v4)
 
-**6 days to submission (closes July 19, 2026, 23:59 UTC).** This version is
-deliberately honest about that clock: the product is already a working,
-multiplayer, live-data, Solana-verified fan game. The highest-leverage work left
-is *not* a stack of new features — it's the ONE feature that upgrades the core
-mechanic, plus converting everything built into a submission that scores.
+**Submission closes July 19, 2026, 23:59 UTC.** This version is deliberately
+honest about that clock: the product is a working, multiplayer, live-data,
+Solana-verified fan game — the goal-aftershock feature and production KV are
+now shipped, and the remaining gate is the demo video.
 
 Criteria shorthand: **UX** = Fan Accessibility & UX · **RT** = Real-Time
 Responsiveness · **OR** = Originality & Value Creation · **COM** =
@@ -22,21 +21,28 @@ Commercial/Monetization · **EX** = Completeness & Execution.
 - **Table feed** (auto game-events + chat + emoji reactions, members-only)
 - **OG-image receipts** + **Solana-verified (Merkle-proof) receipts** with a re-attest endpoint
 - Live status / score / connectivity hardening (retry + last-good cache)
+- **Goal-aftershock rounds** (1.1 below — SHIPPED): goal detected → 60s "where
+  does the market settle?" round, banner + feed event, KV-safe detection
+- **Skill-based scoring** vs the no-change baseline (parroting ≈ 0; reading the move pays)
+- **Score-first reads**: FT detected even after TxLINE pulls the odds; VAR-corrected
+  scorelines (goals can go *down*); honest FT / market-closed states across the UI
+- Fixtures card grouped by day + national-flag chips (hand-drawn inline SVG)
+- **Vercel KV connected in production** (`/api/health` → `"storage":"kv"`)
 - Cinematic hero (IP-safe art, athletic wordmark) + generative in-app score
 - `DOCS.md` + `TXLINE_FEEDBACK.md` written; deployed at ballroom-eight.vercel.app
 
 Routes today: `txline/{matches,match,jwt,activate}`, `league/{create,get,round,feed,kick,leave,dissolve}`,
-`receipt/{create,verify}`, `health`. 5 pages, 10 components.
+`receipt/{create,verify}`, `health`, `dev/goal` (non-prod). 5 pages, 11 components.
 
 ---
 
 ## P0 — Submission gate (do these first; nothing else matters without them)
 
-### 0.1 Connect Vercel KV (production persistence)
+### 0.1 Connect Vercel KV (production persistence) — ✅ DONE
 **Criteria:** EX (multiplayer is fake in prod without it).
 **Acceptance:**
-- [ ] `ballroom-eight.vercel.app/api/health` returns `"storage":"kv"`
-- [ ] A table created on one device is visible on a second device after a redeploy
+- [x] `ballroom-eight.vercel.app/api/health` returns `"storage":"kv"` (verified)
+- [x] A table created on one device is visible on a second device after a redeploy
 
 ### 0.2 Demo video (≤5 min) — the hard screening gate
 **Criteria:** gate for ALL of them.
@@ -56,17 +62,17 @@ Routes today: `txline/{matches,match,jwt,activate}`, `league/{create,get,round,f
 
 ## P1 — The 10x layer (ranked by value ÷ effort, realistic for 6 days)
 
-### 1.1 ⭐ Goal-aftershock round — THE feature
+### 1.1 ⭐ Goal-aftershock round — THE feature — ✅ SHIPPED
 The core mechanic is quietest exactly when the match is loudest. A goal drops →
 the server auto-opens a **short (~60s) round on where the market settles**. Odds
-are *guaranteed* to be moving, football IQ actually pays, tension is real. This
-is the single biggest upgrade and it demos spectacularly on a live goal.
-**Criteria:** RT + OR (primary), UX. Effort: ~0.5–1 day. **Build this.**
+are *guaranteed* to be moving, football IQ actually pays, tension is real.
+**Criteria:** RT + OR (primary), UX.
 **Acceptance:**
-- [ ] Server detects a scoreline change (goal) per fixture
-- [ ] Within one poll of a goal, an aftershock round opens (cuts the current round early if no one has locked; otherwise queues right after resolve)
-- [ ] Aftershock is visibly distinct (banner + shorter clock) and posts a feed event ("GOAL 63' — call where it lands")
-- [ ] A dev/demo "simulate goal" trigger (gated to non-prod) so it's testable + filmable even between goals
+- [x] Server detects a scoreline change (goal) per fixture — KV-safe (compares the
+      live score to the round's own persisted reference; survives serverless)
+- [x] Within one poll of a goal, an aftershock round opens (cuts the current round early if no one has locked; otherwise pulls the clock in and queues it)
+- [x] Aftershock is visibly distinct (gold banner + 60s clock) and posts a feed event ("GOAL 63' — market repricing. Call where it lands.")
+- [x] A dev/demo "simulate goal" trigger (`/api/dev/goal`, gated to non-prod) so it's testable + filmable even between goals
 
 ### 1.2 Match-moment markers on the heartbeat
 Plot goals / red cards on the gold thread; the Scores feed already flows through
@@ -78,9 +84,10 @@ comprehension moment the track asks for. Very demo-friendly.
 - [ ] A round in progress is annotated if a goal lands inside its window
 
 ### 1.3 SSE streaming (kill the poll)
-Swap the 1s REST poll for TxLINE `/api/odds/stream` + `/api/scores/stream`,
-proxied through one route. Sub-second, event-driven, and removes the last of the
-"connectivity" fragility.
+Swap the 1s REST poll for TxLINE `/api/odds/stream` + `/api/scores/stream`
+(endpoints confirmed by TxLINE support; we're on mainnet SL12 real-time so a
+stream is pure latency win, not a tier change), proxied through one route.
+Faster goal detection = snappier aftershock triggers, and fewer requests.
 **Criteria:** RT. Effort: ~1 day. Invisible to judges but strengthens the demo.
 **Acceptance:**
 - [ ] One SSE connection per viewed match, auto-reconnect on drop
@@ -137,7 +144,7 @@ is seated"). Phones are the stated context.
 | **Demo video ≤5 min** | ⬜ 0.2 — the gate |
 | Technical documentation | ✅ DOCS.md |
 | API feedback | ✅ TXLINE_FEEDBACK.md |
-| Production persistence | ⬜ 0.1 (connect KV) |
+| Production persistence | ✅ Vercel KV connected (`/api/health` → `"storage":"kv"`) |
 
 ## Criteria coverage (what still moves the needle)
 
@@ -151,11 +158,11 @@ is seated"). Phones are the stated context.
 
 ---
 
-## Honest recommendation (given 6 days)
-1. **Today:** connect KV (0.1), then build the **goal-aftershock (1.1)** while live
-   matches are on to test it — it's the one feature that raises the ceiling on
-   Originality *and* Real-Time, and it's the money shot of the demo.
-2. **Then:** add **moment markers (1.2)** — cheap, visible, reinforces 1.1.
-3. **Then:** record the **demo (0.2)** with a 60s round window, and file the form (0.3).
-4. Everything else (SSE, Floor, PWA) is upside only if time remains. Do not add
+## Honest recommendation (updated)
+1. **KV (0.1) and goal-aftershock (1.1) are done.** The only remaining gate is
+   the **demo video (0.2)** — record it during a live match with
+   `NEXT_PUBLIC_ROUND_SECONDS=60`, then file the form (0.3).
+2. If (and only if) time remains after the video: **moment markers (1.2)** —
+   cheap, visible, reinforces the aftershock story.
+3. Everything else (SSE, Floor, PWA) is post-submission upside. Do not add
    breadth before the video exists.

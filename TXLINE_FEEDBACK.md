@@ -93,3 +93,10 @@ including a feature (Solana-verified receipts) that literally can't exist withou
 it. Fixing the snapshot-completeness signal, the scores casing/state docs, and
 the activation papercuts would take the integration from "figured it out by
 dumping responses" to "followed the docs and it worked."
+
+Process note: everything above was observed on **mainnet service level 12
+(real-time)**, so none of it is tier-delay artefact — and we log fixture id +
+service level with every anomaly so coverage gaps can be reported per the
+recommended escalation path. Next integration step on our side is the
+`/api/odds/stream` + `/api/scores/stream` SSE endpoints to replace snapshot
+polling (faster goal detection for aftershock rounds, fewer requests).
