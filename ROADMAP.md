@@ -28,7 +28,7 @@ Commercial/Monetization · **EX** = Completeness & Execution.
   scorelines (goals can go *down*); honest FT / market-closed states across the UI
 - Fixtures card grouped by day + national-flag chips (hand-drawn inline SVG)
 - **Vercel KV connected in production** (`/api/health` → `"storage":"kv"`)
-- Cinematic hero (IP-safe art, athletic wordmark) + generative in-app score
+- Cinematic hero (IP-safe art, athletic wordmark) + matchday soundtrack
 - `DOCS.md` + `TXLINE_FEEDBACK.md` written; deployed at ballroom-eight.vercel.app
 
 Routes today: `txline/{matches,match,jwt,activate}`, `league/{create,get,round,feed,kick,leave,dissolve}`,

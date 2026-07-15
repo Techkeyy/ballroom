@@ -101,7 +101,7 @@ scripts/
 
 ## Stack
 
-**Next.js 14** (App Router, TypeScript) · **Tailwind CSS** · **@solana/web3.js + wallet-adapter** · **Vercel KV** · hand-rolled SVG charting · Web-Audio generative score (no audio assets)
+**Next.js 14** (App Router, TypeScript) · **Tailwind CSS** · **@solana/web3.js + wallet-adapter** · **Vercel KV** · hand-rolled SVG charting · matchday soundtrack
 
 ## Documentation
 
@@ -122,4 +122,4 @@ scripts/
 
 ## Guardrails
 
-Free-to-play · skill-based · closest-to-the-pin scoring · **no wagering, no money staked, ever.** All art and audio are original or IP-safe.
+Free-to-play · skill-based · closest-to-the-pin scoring · **no wagering, no money staked, ever.** All artwork is original or IP-safe.
