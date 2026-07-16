@@ -323,6 +323,10 @@ export default function MatchPage() {
   const isLive = dataSource === "simulator" ? true : Boolean(match.live);
   if (dataSource !== "simulator" && match.oddsAvailable !== false) marketSeenRef.current = true;
   const marketOpen = dataSource === "simulator" ? true : marketSeenRef.current;
+  // A LIVE match whose market we can't show yet (TxLINE suspends/pulls the 1X2
+  // line late in a game, and a cold server has no cached price) is NOT
+  // pre-match — never tell the room "kicks off Wed" for a game already at 90'.
+  const liveNoMarket = dataSource !== "simulator" && !marketOpen && !!match.live && !match.finished;
   const statusLabel =
     dataSource === "simulator"
       ? "SIM"
@@ -485,6 +489,17 @@ export default function MatchPage() {
                   Pick another fixture from the card.
                 </p>
               </div>
+            ) : liveNoMarket ? (
+              <div className="mt-2">
+                <p className="eyebrow">
+                  Market paused{match.minute ? ` · ${match.minute}'` : ""}
+                </p>
+                <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-ivory-dim">
+                  TxLINE has the market suspended for this fixture right now (it
+                  does this late in a game). The number returns when they reprice
+                  — the round opens itself the moment it does.
+                </p>
+              </div>
             ) : (
               <div className="mt-2">
                 <p className="eyebrow">
@@ -541,6 +556,13 @@ export default function MatchPage() {
                 Full time — the market has closed.
               </p>
               <p className="eyebrow mt-2">No more calls on this one</p>
+            </div>
+          ) : liveNoMarket ? (
+            <div className="panel-strong p-6 text-center">
+              <p className="font-display text-lg italic text-ivory-dim">
+                The market&apos;s paused.
+              </p>
+              <p className="eyebrow mt-2">The round opens when TxLINE reprices</p>
             </div>
           ) : !marketOpen ? (
             <div className="panel-strong p-6 text-center">
