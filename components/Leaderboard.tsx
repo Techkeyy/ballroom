@@ -38,6 +38,14 @@ export default function Leaderboard({
   const [kicking, setKicking] = useState<string | null>(null);
   const removedFired = useRef(false);
 
+  // Callers pass `onRemoved` as an inline arrow — a new identity every render.
+  // It must NOT be an effect dependency: the match page re-renders every ~120ms
+  // (live chart), and restarting this effect that often cancels every in-flight
+  // fetch before a real-network response can land — the league then never loads
+  // ("SYNCING…" forever) while hammering the API. Keep it in a ref instead.
+  const onRemovedRef = useRef(onRemoved);
+  onRemovedRef.current = onRemoved;
+
   useEffect(() => {
     if (!leagueCode) return;
     let alive = true;
@@ -49,7 +57,7 @@ export default function Leaderboard({
         const gone = l.dissolved || (player.address && !l.members[player.address]);
         if (gone && !removedFired.current) {
           removedFired.current = true;
-          onRemoved?.();
+          onRemovedRef.current?.();
         }
       });
     tick();
@@ -58,7 +66,7 @@ export default function Leaderboard({
       alive = false;
       clearInterval(iv);
     };
-  }, [leagueCode, refreshKey, player.address, onRemoved]);
+  }, [leagueCode, refreshKey, player.address]);
 
   const isHost = Boolean(league && player.address && league.host === player.address);
 
