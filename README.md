@@ -2,7 +2,7 @@
 
 **Read the market, not the match.** Race your friends to call where the live World Cup odds move next — free to play, skill only, nothing staked.
 
-**Live app:** https://ballroom-eight.vercel.app · **Demo video:** _coming with submission_
+**Live app:** https://ballroom-eight.vercel.app · **Demo video:** https://youtu.be/pVEuaI2uQTk?si=UEP52yuwB5KW3uUl
 
 Built for the **TxODDS "Consumer and Fan Experiences"** World Cup track on [Superteam Earn](https://earn.superteam.fun). Powered by [TxLINE](https://txline.txodds.com) real-time consensus odds, signed in with Solana.
 
